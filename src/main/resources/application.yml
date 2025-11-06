@@ -1,10 +1,46 @@
 spring:
   application:
     name:  matuabom
-#  security:
-#    oauth2:
-#      client:
-#        registration:
+    security:
+      oauth2:
+        client:
+          registration:
+            google:
+              client-id: ${GOOGLE_CLIENT_ID}
+              client-secret: ${GOOGLE_CLIENT_SECRET}
+              redirect-uri: "{baseUrl}/login/oauth2/code/google"
+              scope:
+                - openid
+                - email
+                - profile
+                - https://www.googleapis.com/auth/calendar.readonly
+          provider:
+            google:
+              authorization-uri: https://accounts.google.com/o/oauth2/auth
+              token-uri: https://oauth2.googleapis.com/token
+              user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: "{baseUrl}/login/oauth2/code/google"
+            scope:
+              - openid
+              - email
+              - profile
+              - https://www.googleapis.com/auth/calendar.readonly
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+  data:
+    mongodb:
+      database: ${mongodb_name}
+      uri: ${mongodb_uri}
 #          kakao:
 #            client-id: ${KAKAO_CLIENT_ID}
 #            client-secret: ${KAKAO_CLIENT_SECRET}
@@ -27,10 +63,7 @@ spring:
 #    url: ${mysql_db_name}
 #    username: ${mysql_user}
 #    password: ${mysql_user_pw}
-#  data:
-#    mongodb:
-#      database: ${mongodb_name}
-#      uri: ${mongodb_uri}
+
 #  jpa:
 #    hibernate:
 #      ddl-auto: none
