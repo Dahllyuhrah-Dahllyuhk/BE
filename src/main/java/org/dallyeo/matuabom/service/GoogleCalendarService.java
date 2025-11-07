@@ -1,7 +1,9 @@
+// src/main/java/org/dallyeo/matuabom/service/GoogleCalendarService.java
 package org.dallyeo.matuabom.service;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.client.util.DateTime;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.Events;
@@ -27,10 +29,8 @@ public class GoogleCalendarService {
 
     private final CalendarEventRepository repository;
 
-    /** 구글 캘린더 클라이언트 생성 */
     private Calendar buildCalendarClient(OAuth2AuthorizedClient authorizedClient)
             throws GeneralSecurityException, IOException {
-
         var httpTransport = GoogleNetHttpTransport.newTrustedTransport();
         var jsonFactory = GsonFactory.getDefaultInstance();
 
@@ -44,18 +44,16 @@ public class GoogleCalendarService {
         .build();
     }
 
-    /** OAuth2 유저 이메일 안전하게 추출 */
+    /** 저장/조회 모두 동일 규칙으로 이메일을 뽑도록 */
     private String resolveUserEmail() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof DefaultOAuth2User oAuth2User) {
             Object email = oAuth2User.getAttributes().get("email");
             if (email != null) return email.toString();
         }
-        // fallback (일부 환경에서는 principalName이 이메일일 수도, 아닐 수도 있음)
         return auth != null ? auth.getName() : "unknown";
     }
 
-    /** Google Event -> DTO 변환 */
     private CalendarEventDto toDto(Event event, String userEmail) {
         final String tz = "Asia/Seoul";
         boolean allDay = event.getStart() != null && event.getStart().getDate() != null;
@@ -64,14 +62,14 @@ public class GoogleCalendarService {
         String startIso, endIso;
 
         if (allDay) {
-            startTs = event.getStart().getDate().getValue(); // 자정 기준 (날짜)
+            startTs = event.getStart().getDate().getValue();
             endTs   = event.getEnd().getDate().getValue();
-            startIso = Instant.ofEpochMilli(startTs).atZone(ZoneId.of(tz)).toLocalDate().toString(); // yyyy-MM-dd
+            startIso = Instant.ofEpochMilli(startTs).atZone(ZoneId.of(tz)).toLocalDate().toString();
             endIso   = Instant.ofEpochMilli(endTs).atZone(ZoneId.of(tz)).toLocalDate().toString();
         } else {
             startTs = event.getStart().getDateTime().getValue();
             endTs   = event.getEnd().getDateTime().getValue();
-            startIso = Instant.ofEpochMilli(startTs).atZone(ZoneId.of(tz)).toString(); // ISO-8601
+            startIso = Instant.ofEpochMilli(startTs).atZone(ZoneId.of(tz)).toString();
             endIso   = Instant.ofEpochMilli(endTs).atZone(ZoneId.of(tz)).toString();
         }
 
@@ -88,24 +86,30 @@ public class GoogleCalendarService {
                 .build();
     }
 
-    /** 모든 이벤트 가져와서 MongoDB에 저장 후 반환 (full sync) */
+    /** ✅ 모든 기간(과거~미래) 전체 동기화 */
     public List<CalendarEventDto> fetchAndSaveAllEvents(OAuth2AuthorizedClient authorizedClient)
             throws GeneralSecurityException, IOException {
 
         Calendar calendar = buildCalendarClient(authorizedClient);
-
         String email = resolveUserEmail();
+
+        // 1970-01-01 00:00:00Z 부터 전부
+        DateTime min = new DateTime(0L);
 
         List<Event> all = new ArrayList<>();
         String pageToken = null;
         do {
             Events events = calendar.events()
                     .list("primary")
-                    .setSingleEvents(true)  // 반복 이벤트 전개
+                    .setSingleEvents(true)
                     .setOrderBy("startTime")
-                    .setMaxResults(2500)    // 최대치
+                    .setTimeMin(min)           // ✅ 과거부터
+                    // .setTimeMax(...)        // ❌ 지정하지 않아 미래 제한 없음
+                    .setShowDeleted(false)
+                    .setMaxResults(2500)
                     .setPageToken(pageToken)
                     .execute();
+
             if (events.getItems() != null) {
                 all.addAll(events.getItems());
             }
@@ -116,14 +120,13 @@ public class GoogleCalendarService {
                 .map(e -> toDto(e, email))
                 .toList();
 
-        // 사용자별로 기존 데이터 정리 후 저장 (전체 싹다 삭제가 아니라 사용자 기준 삭제)
         repository.deleteByUserEmail(email);
         repository.saveAll(dtos);
 
         return dtos;
     }
 
-    /** 오늘 이후만 가져오고 싶을 때 (옵션) */
+    /** (옵션) 오늘 이후만 동기화 */
     public List<CalendarEventDto> fetchUpcomingAndSave(OAuth2AuthorizedClient authorizedClient)
             throws GeneralSecurityException, IOException {
 
@@ -137,10 +140,12 @@ public class GoogleCalendarService {
                     .list("primary")
                     .setSingleEvents(true)
                     .setOrderBy("startTime")
-                    .setTimeMin(new com.google.api.client.util.DateTime(System.currentTimeMillis()))
+                    .setTimeMin(new DateTime(System.currentTimeMillis())) // 오늘 이후
+                    .setShowDeleted(false)
                     .setMaxResults(2500)
                     .setPageToken(pageToken)
                     .execute();
+
             if (events.getItems() != null) all.addAll(events.getItems());
             pageToken = events.getNextPageToken();
         } while (pageToken != null);
