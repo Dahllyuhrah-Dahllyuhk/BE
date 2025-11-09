@@ -13,6 +13,7 @@ spring:
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             scope:
               - profile_nickname
+              - profile_image
               - friends
             client-authentication-method: client_secret_post
             provider: kakao
