@@ -1,29 +1,24 @@
+#로컬 테스트할 때 오류나면 이 부분 삭제하면 됨
+server:
+  # Nginx 뒤에서 {baseUrl} 계산이 맞도록
+  forward-headers-strategy: framework
+
 spring:
   application:
-    name:  matuabom
-    security:
-      oauth2:
-        client:
-          registration:
-            google:
-              client-id: ${GOOGLE_CLIENT_ID}
-              client-secret: ${GOOGLE_CLIENT_SECRET}
-              redirect-uri: "{baseUrl}/login/oauth2/code/google"
-              scope:
-                - openid
-                - email
-                - profile
-                - https://www.googleapis.com/auth/calendar.readonly
-          provider:
-            google:
-              authorization-uri: https://accounts.google.com/o/oauth2/auth
-              token-uri: https://oauth2.googleapis.com/token
-              user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+    name: matuabom
+
+  data:
+    mongodb:
+      # 환경변수 이름은 대문자/언더스코어 권장
+      uri: ${MONGODB_URI}
+      database: ${MONGODB_NAME}
+
   security:
     oauth2:
       client:
         registration:
           google:
+            # ✅ 여기서 환경변수가 실제 값으로 치환됩니다
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
             redirect-uri: "{baseUrl}/login/oauth2/code/google"
@@ -31,16 +26,16 @@ spring:
               - openid
               - email
               - profile
-              - https://www.googleapis.com/auth/calendar
+              # 읽기만 필요하면 readonly, 쓰기도 필요하면 calendar 로 바꾸세요
+              - https://www.googleapis.com/auth/calendar.readonly
         provider:
           google:
-            authorization-uri: https://accounts.google.com/o/oauth2/auth
+            # ✅ 최신 권장 v2 auth endpoint
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
             token-uri: https://oauth2.googleapis.com/token
             user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
-  data:
-    mongodb:
-      database: ${mongodb_name}
-      uri: ${mongodb_uri}
+            user-name-attribute: sub
+
 #          kakao:
 #            client-id: ${KAKAO_CLIENT_ID}
 #            client-secret: ${KAKAO_CLIENT_SECRET}

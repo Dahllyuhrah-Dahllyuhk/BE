@@ -67,7 +67,7 @@ public class SecurityConfig {
 
             // ✅ OAuth2 로그인 완료 후 FE로
             .oauth2Login(oauth -> oauth
-                .defaultSuccessUrl("http://localhost:3000", true)
+                .defaultSuccessUrl("http://localhost", true)
                 .failureUrl("/login?error=true")
             )
 
