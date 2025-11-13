@@ -43,4 +43,20 @@ public class UserService {
                 ));
         return user.getId();
     }
+
+    @Transactional
+    public void linkGoogleEmail(String userId, String googleEmail) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("user not found: " + userId));
+        user.setGoogleEmail(googleEmail);
+        userRepository.save(user);
+    }
+
+    /** API 호출 시, 현재 카카오 유저의 구글 이메일 조회 */
+    @Transactional(readOnly = true)
+    public String getGoogleEmail(String userId) {
+        return userRepository.findById(userId)
+            .map(User::getGoogleEmail)
+            .orElse(null);
+    }
 }

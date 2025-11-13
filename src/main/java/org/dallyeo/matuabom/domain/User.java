@@ -24,6 +24,8 @@ public class User {
     private Instant kakaoAccessTokenExpiresAt;
     private Instant kakaoRefreshTokenExpiresAt;
 
+    private String googleEmail;
+
     @Builder.Default
     private Instant createdAt = Instant.now();
 
