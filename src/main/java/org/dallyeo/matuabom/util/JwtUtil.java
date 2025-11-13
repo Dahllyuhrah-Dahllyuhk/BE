@@ -41,7 +41,13 @@ public class JwtUtil {
 //    }
 
     public String validateAndGetSub(String jwt) {
-        return Jwts.parser().verifyWith(key).build()
-                .parseSignedClaims(jwt).getPayload().getSubject();
+            return Jwts.parser().verifyWith(key).build()
+                    .parseSignedClaims(jwt)
+                    .getPayload()
+                    .getSubject();
+    }
+
+    public String getUserIdFromToken(String jwt) {
+            return validateAndGetSub(jwt);
     }
 }
