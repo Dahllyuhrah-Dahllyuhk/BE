@@ -1,6 +1,7 @@
 package org.dallyeo.matuabom.controller;
 
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
@@ -42,7 +43,11 @@ public class CalendarController {
         }
         return ResponseEntity.ok(service.listAllForUser());
     }
-
+    @GetMapping("/sync")
+    public void redirectToGoogle(HttpServletResponse res) throws IOException {
+        // 구글 OAuth 인증 시작점으로 리다이렉트
+        res.sendRedirect("/oauth2/authorization/google");
+    }
     /**
      * Google ↔ DB 풀 동기화
      */

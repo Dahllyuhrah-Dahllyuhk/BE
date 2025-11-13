@@ -1,79 +1,110 @@
+
 package org.dallyeo.matuabom.config;
 
 import lombok.RequiredArgsConstructor;
+import org.dallyeo.matuabom.filter.JwtAuthFilter;
+import org.dallyeo.matuabom.handler.JwtLoginSuccessHandler;
+import org.dallyeo.matuabom.service.KakaoOAuth2UserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
+import org.springframework.security.oauth2.client.web.OAuth2LoginAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @RequiredArgsConstructor
-@Profile("!test")
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final KakaoOAuth2UserService kakaoOAuth2UserService;
+    private final JwtLoginSuccessHandler jwtLoginSuccessHandler;
+    private final JwtAuthFilter jwtAuthFilter;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-            // ✅ CORS 필수 (프리플라이트 포함)
-            .cors(Customizer.withDefaults())
-            .csrf(AbstractHttpConfigurer::disable)
-            .formLogin(AbstractHttpConfigurer::disable)
-            .httpBasic(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
+                .csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                    session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                )
 
-            // ✅ OAuth2 로그인 동안 세션 사용
-            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .authorizeHttpRequests(auth -> auth
+                        // preflight
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-            .authorizeHttpRequests(auth -> auth
-                // ✅ 프리플라이트는 무조건 허용
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // docs & static
+                        .requestMatchers(
+                                "/swagger", "/swagger-ui.html", "/swagger-ui/**",
+                                "/api-docs", "/api-docs/**", "/v3/api-docs/**",
+                                "/", "/error", "/favicon.ico",
+                                "/*.png", "/*.gif", "/*.svg", "/*.jpg", "/*.html", "/*.css", "/*.js"
+                        ).permitAll()
 
-                .requestMatchers(
-                    "/swagger", "/swagger-ui.html", "/swagger-ui/**",
-                    "/api-docs", "/api-docs/**", "/v3/api-docs/**",
-                    "/", "/error", "/favicon.ico",
-                    "/*.png", "/*.gif", "/*.svg", "/*.jpg", "/*.html", "/*.css", "/*.js"
-                ).permitAll()
+                        // oauth2 endpoints
+                        .requestMatchers("/oauth2/**", "/login/**").permitAll()
 
-                // ✅ OAuth2 엔드포인트 허용
-                .requestMatchers("/oauth2/**", "/login/**").permitAll()
+                        // protected
+                        .requestMatchers("/api/calendar/**").authenticated()
 
-                // 보호 대상
-                .requestMatchers("/api/calendar/**").authenticated()
-                .anyRequest().authenticated()
-            )
+                        .anyRequest().permitAll()
+                )
 
-            // ✅ AJAX(API) 요청은 401로, 로그인 리다이렉트(302) 금지
-            .exceptionHandling(ex -> ex
-                .authenticationEntryPoint((req, res, e) -> {
-                    // /api/로 시작하면 401로 돌려서 브라우저 fetch가 제대로 처리하게 함
-                    String uri = req.getRequestURI();
-                    if (uri != null && uri.startsWith("/api/")) {
-                        res.setStatus(401);
-                        res.setContentType("application/json;charset=UTF-8");
-                        res.getWriter().write("{\"error\":\"unauthorized\"}");
-                    } else {
-                        // 그 외엔 기존 동작 유지(리다이렉트)
-                        res.sendRedirect("/oauth2/authorization/google");
-                    }
-                })
-            )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, e) -> {
+                            res.setStatus(401);
+                            res.setContentType("application/json;charset=UTF-8");
+                            res.getWriter().write("{\"error\":\"unauthorized\"}");
+                        })
+                )
 
-            // ✅ OAuth2 로그인 완료 후 FE로
-            .oauth2Login(oauth -> oauth
-                .defaultSuccessUrl("http://localhost", true)
-                .failureUrl("/login?error=true")
-            )
+                .oauth2Login(oauth2 -> oauth2
+                    .userInfoEndpoint(userInfo -> userInfo
+                        .userService(oauth2UserRequest -> {
+                            String registrationId = oauth2UserRequest.getClientRegistration().getRegistrationId();
 
-            // ✅ @RegisteredOAuth2AuthorizedClient 주입을 위해 필요
-            .oauth2Client(Customizer.withDefaults())
+                            if ("kakao".equalsIgnoreCase(registrationId)) {
+                                return kakaoOAuth2UserService.loadUser(oauth2UserRequest);
+                            }
 
-            .build();
+                            // 구글은 기본 서비스 사용
+                            return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
+                        })
+                    )
+                    .successHandler(jwtLoginSuccessHandler)
+                )
+
+
+                .oauth2Client(Customizer.withDefaults())
+
+                .addFilterAfter(jwtAuthFilter, OAuth2LoginAuthenticationFilter.class)
+
+                .build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowCredentials(true);
+        config.setAllowedOrigins(List.of("http://localhost:3000"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }

@@ -15,7 +15,6 @@ import org.dallyeo.matuabom.repository.CalendarEventRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -31,6 +30,7 @@ import java.util.stream.Collectors;
 public class GoogleCalendarService {
 
     private final CalendarEventRepository repository;
+    private final UserService userService;   // ✅ 멀티 유저용
 
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter ISO_LOCAL_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -56,8 +56,9 @@ public class GoogleCalendarService {
                 return ld.atStartOfDay(zone).toInstant();
             }
 
-            try { return OffsetDateTime.parse(t, ISO_OFFSET_DT).toInstant(); }
-            catch (Exception ignore) { }
+            try {
+                return OffsetDateTime.parse(t, ISO_OFFSET_DT).toInstant();
+            } catch (Exception ignore) { }
 
             return Instant.parse(t);
         } catch (Exception e) {
@@ -65,14 +66,31 @@ public class GoogleCalendarService {
         }
     }
 
-    /** 현재 로그인한 사용자 이메일 조회 */
-    private String resolveUserEmail() {
+    /**
+     * ✅ 현재 JWT 로 인증된 카카오 유저 → UserService 를 통해 구글 이메일 조회
+     *    required=true  : 구글 이메일 없으면 예외 (동기화/쓰기 작업에 사용)
+     *    required=false : 구글 이메일 없으면 null 반환 (조회에서 사용)
+     */
+    private String resolveUserEmail(boolean required) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof DefaultOAuth2User ou) {
-            Object email = ou.getAttributes().get("email");
-            if (email != null) return email.toString();
+        if (auth == null) {
+            throw new IllegalStateException("인증되지 않은 요청입니다.");
         }
-        return (auth != null ? auth.getName() : "unknown");
+
+        // JwtAuthFilter 에서 Authentication.name 을 우리 userId 로 세팅했다고 가정
+        String userId = auth.getName();
+        String googleEmail = userService.getGoogleEmail(userId);
+
+        if ((googleEmail == null || googleEmail.isBlank()) && required) {
+            throw new IllegalStateException("연결된 구글 계정이 없습니다. 먼저 동기화를 진행해 주세요.");
+        }
+
+        return googleEmail;
+    }
+
+    /** 기존 시그니처 유지: "반드시 구글 이메일 있어야 하는" 경우에 사용 */
+    private String resolveUserEmail() {
+        return resolveUserEmail(true);
     }
 
     /** Google Calendar 클라이언트 생성 */
@@ -185,11 +203,31 @@ public class GoogleCalendarService {
     /* ========================================
        ✅ 전체 동기화 (구글 → DB)
        ======================================== */
+
+    /**
+     * JWT 로부터 현재 유저를 찾아 UserService 로 구글 이메일을 가져온 뒤 동기화
+     * (여기서는 구글 이메일 반드시 있어야 하므로 required=true)
+     */
     public List<CalendarEventDto> fetchAndSaveAllEvents(OAuth2AuthorizedClient client)
             throws GeneralSecurityException, IOException {
 
+        String email = resolveUserEmail(true);
+        return fetchAndSaveAllEvents(client, email);
+    }
+
+    /**
+     * 구글 이메일을 명시적으로 받아서 동기화 (JwtLoginSuccessHandler 에서 사용)
+     */
+    public List<CalendarEventDto> fetchAndSaveAllEvents(OAuth2AuthorizedClient client,
+                                                        String userEmail)
+            throws GeneralSecurityException, IOException {
+
+        // ✅ 람다에서 캡처 가능한 final 변수로 고정
+        final String email = (userEmail == null || userEmail.isBlank())
+                ? resolveUserEmail(true)   // 동기화는 필수로 구글 계정 있어야 함
+                : userEmail;
+
         Calendar calendar = buildCalendarClient(client);
-        String email = resolveUserEmail();
         ZoneId zone = DEFAULT_ZONE;
 
         DateTime minTime = new DateTime(0L);
@@ -229,7 +267,7 @@ public class GoogleCalendarService {
             throws GeneralSecurityException, IOException {
 
         Calendar calendar = buildCalendarClient(client);
-        String email = resolveUserEmail();
+        String email = resolveUserEmail(true);   // 생성은 구글 계정 필수
         ZoneId zone = DEFAULT_ZONE;
 
         Event toCreate = buildGoogleEvent(req, zone);
@@ -248,7 +286,7 @@ public class GoogleCalendarService {
             throws GeneralSecurityException, IOException {
 
         Calendar calendar = buildCalendarClient(client);
-        String email = resolveUserEmail();
+        String email = resolveUserEmail(true);   // 수정도 구글 계정 필수
         ZoneId zone = DEFAULT_ZONE;
 
         Event existing = calendar.events().get("primary", eventId).execute();
@@ -341,16 +379,29 @@ public class GoogleCalendarService {
     /* ========================================
        ✅ 조회
        ======================================== */
+
+    /** 전체 조회: 구글 계정이 아직 안 연결된 유저면 그냥 빈 배열 반환 */
     public List<CalendarEventDto> listAllForUser() {
-        String email = resolveUserEmail();
+        String email = resolveUserEmail(false);  // ❗ required=false
+
+        if (email == null || email.isBlank()) {
+            // 아직 구글 동기화 안 한 유저 → 그냥 빈 배열
+            return Collections.emptyList();
+        }
+
         return repository.findByUserEmailOrderByStartTimestampAsc(email);
     }
 
     public List<CalendarEventDto> listRangeForUser(Long startTs, Long endTs) {
-        String email = resolveUserEmail();
+        String email = resolveUserEmail(false);  // ❗ required=false
 
-        if (startTs == null || endTs == null)
+        if (email == null || email.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        if (startTs == null || endTs == null) {
             return repository.findByUserEmailOrderByStartTimestampAsc(email);
+        }
 
         return repository.findByUserEmailAndStartTimestampBetweenOrderByStartTimestampAsc(
                 email, startTs, endTs

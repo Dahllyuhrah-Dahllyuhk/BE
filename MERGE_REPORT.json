@@ -1,0 +1,32 @@
+{
+  "be_root": "/mnt/data/merge_workspace/BE",
+  "kakao_root": "/mnt/data/merge_workspace/KAKAO",
+  "merged_dir": "/mnt/data/merge_workspace/BE_merged",
+  "copied_from_kakao": [
+    "src/main/java/org/dallyeo/matuabom/config/AppConfig.java",
+    "src/main/java/org/dallyeo/matuabom/controller/AuthController.java",
+    "src/main/java/org/dallyeo/matuabom/controller/KakaoApiController.java",
+    "src/main/java/org/dallyeo/matuabom/domain/User.java",
+    "src/main/java/org/dallyeo/matuabom/dto/KakaoUserInfo.java",
+    "src/main/java/org/dallyeo/matuabom/dto/MeDto.java",
+    "src/main/java/org/dallyeo/matuabom/dto/UpsertKakaoUserDto.java",
+    "src/main/java/org/dallyeo/matuabom/filter/JwtAuthFilter.java",
+    "src/main/java/org/dallyeo/matuabom/handler/JwtLoginSuccessHandler.java",
+    "src/main/java/org/dallyeo/matuabom/repository/UserRepository.java",
+    "src/main/java/org/dallyeo/matuabom/service/KakaoOAuth2UserService.java",
+    "src/main/java/org/dallyeo/matuabom/service/UserService.java",
+    "src/main/java/org/dallyeo/matuabom/util/JwtUtil.java"
+  ],
+  "skipped_from_kakao_due_to_conflict": [
+    "src/main/java/org/dallyeo/matuabom/MatuabomApplication.java",
+    "src/main/java/org/dallyeo/matuabom/config/SecurityConfig.java",
+    "src/main/java/org/dallyeo/matuabom/config/SwaggerConfig.java"
+  ],
+  "notes": [
+    "Merged Kakao OAuth2 and JWT classes into BE base project.",
+    "Merged application.yml to include Kakao provider/registration while preserving BE settings (MongoDB via MONGODB_URI).",
+    "Merged SecurityConfig to wire KakaoOAuth2UserService, JwtLoginSuccessHandler, JwtAuthFilter, and a permissive CORS bean for http://localhost:3000.",
+    "Gradle toolchain set to Java 21 explicitly.",
+    "You may need to set environment variables: KAKAO_CLIENT_ID, KAKAO_CLIENT_SECRET, JWT_SECRET, MONGODB_URI."
+  ]
+}

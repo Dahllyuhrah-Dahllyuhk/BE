@@ -1,68 +1,45 @@
-#로컬 테스트할 때 오류나면 이 부분 삭제하면 됨
 server:
-  # Nginx 뒤에서 {baseUrl} 계산이 맞도록
   forward-headers-strategy: framework
-
 spring:
   application:
     name: matuabom
-
   data:
     mongodb:
-      # 환경변수 이름은 대문자/언더스코어 권장
       uri: ${MONGODB_URI}
       database: ${MONGODB_NAME}
-
   security:
     oauth2:
       client:
         registration:
           google:
-            # ✅ 여기서 환경변수가 실제 값으로 치환됩니다
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-            redirect-uri: "{baseUrl}/login/oauth2/code/google"
+            redirect-uri: '{baseUrl}/login/oauth2/code/google'
             scope:
-              - openid
-              - email
-              - profile
-              # 읽기만 필요하면 readonly, 쓰기도 필요하면 calendar 로 바꾸세요
-              - https://www.googleapis.com/auth/calendar.readonly
+            - openid
+            - email
+            - profile
+            - https://www.googleapis.com/auth/calendar.readonly
+          kakao:
+            client-name: kakao
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: '{baseUrl}/login/oauth2/code/{registrationId}'
+            scope:
+            - profile_nickname
+            - profile_image
+            - friends
+            client-authentication-method: client_secret_post
+            provider: kakao
         provider:
           google:
-            # ✅ 최신 권장 v2 auth endpoint
             authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
             token-uri: https://oauth2.googleapis.com/token
             user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
             user-name-attribute: sub
-
-#          kakao:
-#            client-id: ${KAKAO_CLIENT_ID}
-#            client-secret: ${KAKAO_CLIENT_SECRET}
-#            redirect-uri: http://localhost:8080/login/oauth2/code/kakao
-#            authorization-grant-type: authorization_code
-#            client-authentication-method: client_secret_post
-#            client-name: Kakao
-#            scope:
-#              - profile_nickname
-#              - profile_image
-#        provider:
-#          kakao:
-#            authorization-uri: https://kauth.kakao.com/oauth/authorize
-#            token-uri: https://kauth.kakao.com/oauth/token
-#            user-info-uri: https://kapi.kakao.com/v2/user/me
-#            user-name-attribute: id
-#
-#  datasource:
-#    driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: ${mysql_db_name}
-#    username: ${mysql_user}
-#    password: ${mysql_user_pw}
-
-#  jpa:
-#    hibernate:
-#      ddl-auto: none
-#    show-sql: true
-#    properties:
-#      hibernate:
-#        dialect: org.hibernate.dialect.MySQLDialect
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
