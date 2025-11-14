@@ -10,6 +10,7 @@ import org.dallyeo.matuabom.dto.UpsertKakaoUserDto;
 import org.dallyeo.matuabom.service.GoogleCalendarService;
 import org.dallyeo.matuabom.service.UserService;
 import org.dallyeo.matuabom.util.JwtUtil;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
@@ -128,25 +129,40 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         // 2) 요청 쿠키의 ACCESS_TOKEN 에서 우리 userId 추출
         String jwt = extractAccessTokenFromCookie(request);
         String userId = (jwt != null ? jwtUtil.getUserIdFromToken(jwt) : null);
-        //  ↑ ↑ ↑
-        // JwtUtil 에서 토큰에서 userId(subject)를 꺼내는 메서드를
-        // getUserIdFromToken(String token) 이름으로 사용했다고 가정.
-        // 이름이 다르면 여기만 수정하면 됨.
 
-        // 3) 해당 유저 문서에 구글 이메일 저장 (카카오 계정 ↔ 구글 이메일 매핑)
+        // 3) 카카오 계정 ↔ 구글 이메일 매핑
         if (googleEmail != null && userId != null) {
             userService.linkGoogleEmail(userId, googleEmail);
         }
 
-        // 4) 구글 캘린더 → DB 동기화 (해당 이메일 기준)
+        // 4) 구글 OAuth2 클라이언트 가져오기 (OAuth2 principal 기준)
         OAuth2AuthorizedClient client = getOAuth2AuthorizedClient(oauthToken);
-        try {
-            googleCalendarService.fetchAndSaveAllEvents(client, googleEmail);
-        } catch (GeneralSecurityException e) {
-            throw new RuntimeException("Google calendar sync failed", e);
+
+        // 4-1) userId 기준으로도 OAuth2AuthorizedClient를 저장
+        //      → 이후 /api/calendar/** 에서 auth.getName() = userId 로 찾을 수 있도록
+        if (client != null && userId != null) {
+            OAuth2AuthorizedClient clientForUserKey = new OAuth2AuthorizedClient(
+                    client.getClientRegistration(),
+                    userId,                             // AuthorizedClient 안에 들어갈 principalName
+                    client.getAccessToken(),
+                    client.getRefreshToken()
+            );
+
+            // 🔥 저장 시에도 principal 의 name 이 userId 가 되도록 새 Authentication 생성
+            Authentication principalForUserKey =
+                    new UsernamePasswordAuthenticationToken(
+                            userId,
+                            null,
+                            authentication.getAuthorities()
+                    );
+
+            oAuth2AuthorizedClientService.saveAuthorizedClient(
+                    clientForUserKey,
+                    principalForUserKey
+            );
         }
 
-        // 5) 동기화 완료 후 홈으로 이동
+        // 6) 동기화 완료 후 홈으로 이동
         response.sendRedirect(GOOGLE_REDIRECT_URL);
     }
 
