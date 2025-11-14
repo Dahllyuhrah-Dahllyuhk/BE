@@ -15,4 +15,6 @@ public class CreateEventReq {
     private String end;
     private Boolean allDay;    // null이면 서버가 start/end 형식으로 추정
     private String timeZone;   // 없으면 Asia/Seoul 사용
+
+    private String color;
 }

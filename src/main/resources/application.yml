@@ -19,7 +19,7 @@ spring:
             - openid
             - email
             - profile
-            - https://www.googleapis.com/auth/calendar.readonly
+            - https://www.googleapis.com/auth/calendar
           kakao:
             client-name: kakao
             client-id: ${KAKAO_CLIENT_ID}
