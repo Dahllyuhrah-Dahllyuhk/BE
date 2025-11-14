@@ -22,6 +22,9 @@ public class CalendarEventDto {
     private boolean allDay;     // allday 여부
     private Long startTimestamp; // timestamp (정렬/검색용)
     private Long endTimestamp;
+    private String description;
 
     private String timeZone;    // Asia/Seoul
+
+    private String color;
 }

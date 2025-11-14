@@ -1,4 +1,3 @@
-
 package org.dallyeo.matuabom.config;
 
 import lombok.RequiredArgsConstructor;
@@ -16,7 +15,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.web.OAuth2LoginAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -39,8 +37,10 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
+
+                // ✅ JWT는 stateless지만, OAuth2 로그인은 세션이 필요해서 IF_REQUIRED
                 .sessionManagement(session ->
-                    session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
 
                 .authorizeHttpRequests(auth -> auth
@@ -58,12 +58,14 @@ public class SecurityConfig {
                         // oauth2 endpoints
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
 
-                        // protected
+                        // protected API
                         .requestMatchers("/api/calendar/**").authenticated()
 
                         .anyRequest().permitAll()
                 )
 
+                // ✅ 인증 안 된 상태에서 /api/**로 들어오면
+                //    → 리다이렉트 하지 말고 JSON 401만 응답
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) -> {
                             res.setStatus(401);
@@ -73,21 +75,20 @@ public class SecurityConfig {
                 )
 
                 .oauth2Login(oauth2 -> oauth2
-                    .userInfoEndpoint(userInfo -> userInfo
-                        .userService(oauth2UserRequest -> {
-                            String registrationId = oauth2UserRequest.getClientRegistration().getRegistrationId();
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(oauth2UserRequest -> {
+                                    String registrationId = oauth2UserRequest.getClientRegistration().getRegistrationId();
 
-                            if ("kakao".equalsIgnoreCase(registrationId)) {
-                                return kakaoOAuth2UserService.loadUser(oauth2UserRequest);
-                            }
+                                    if ("kakao".equalsIgnoreCase(registrationId)) {
+                                        return kakaoOAuth2UserService.loadUser(oauth2UserRequest);
+                                    }
 
-                            // 구글은 기본 서비스 사용
-                            return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
-                        })
-                    )
-                    .successHandler(jwtLoginSuccessHandler)
+                                    // 구글은 기본 서비스 사용
+                                    return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
+                                })
+                        )
+                        .successHandler(jwtLoginSuccessHandler)
                 )
-
 
                 .oauth2Client(Customizer.withDefaults())
 
