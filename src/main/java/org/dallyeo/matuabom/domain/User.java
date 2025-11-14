@@ -25,6 +25,7 @@ public class User {
     private Instant kakaoRefreshTokenExpiresAt;
 
     private String googleEmail;
+    private boolean googleLinked;     // 구글 연동 여부
 
     @Builder.Default
     private Instant createdAt = Instant.now();
