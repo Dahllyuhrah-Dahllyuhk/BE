@@ -15,6 +15,8 @@ public class GoogleSyncService {
     private final GoogleOAuthClientService googleTokens;
     private final GoogleCalendarService googleCalendarService;
 
+    private final EventSseService eventSseService;
+
     /* ===========================
      *  1) 초기 / 증분 동기화
      * =========================== */
@@ -51,6 +53,7 @@ public class GoogleSyncService {
             try {
                 googleCalendarService.incrementalSync(tokens);
                 googleTokens.save(tokens);
+                eventSseService.sendEventsUpdated();
             } catch (GeneralSecurityException | IOException e) {
                 e.printStackTrace();
             }
