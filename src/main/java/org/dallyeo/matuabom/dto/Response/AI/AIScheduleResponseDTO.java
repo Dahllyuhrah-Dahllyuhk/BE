@@ -1,6 +1,7 @@
 package org.dallyeo.matuabom.dto.Response.AI;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.OffsetDateTime;
 import lombok.Getter;
 import lombok.Setter;
 import org.dallyeo.matuabom.dto.Response.InputCategory;
@@ -26,10 +27,10 @@ public class AIScheduleResponseDTO {
         private String description;
 
         @JsonProperty("start")
-        private Long start;
+        private OffsetDateTime start;
 
         @JsonProperty("end")
-        private Long end;
+        private OffsetDateTime end;
 
         @JsonProperty("allDay")
         private Boolean allDay;
