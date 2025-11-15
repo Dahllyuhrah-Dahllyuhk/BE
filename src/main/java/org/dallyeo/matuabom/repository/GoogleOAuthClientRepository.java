@@ -9,4 +9,5 @@ public interface GoogleOAuthClientRepository
         extends MongoRepository<GoogleOAuthClientEntity, String> {
 
     Optional<GoogleOAuthClientEntity> findByUserId(String userId);
+    Optional<GoogleOAuthClientEntity> findByWatchChannelId(String watchChannelId);
 }

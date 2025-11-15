@@ -26,5 +26,11 @@ public class GoogleOAuthClientEntity {
 
     private Set<String> scopes;
     private Instant updatedAt;
+
+    private String syncToken;
+
+    private String watchChannelId;     // X-Goog-Channel-ID
+    private String watchResourceId;    // X-Goog-Resource-ID
+    private Instant watchExpiresAt;    // 만료 시각
 }
 

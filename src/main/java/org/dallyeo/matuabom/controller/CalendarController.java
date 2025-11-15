@@ -11,33 +11,53 @@ import java.security.GeneralSecurityException;
 import java.util.List;
 
 @RestController
-@RequiredArgsConstructor
 @RequestMapping("/api/calendar")
+@RequiredArgsConstructor
 public class CalendarController {
 
     private final CalendarEventService calendarEventService;
 
+    // ========================================================
+    // 📌 전체 일정 조회 (구글 ↔ 몽고 실시간 싱크 자동 반영)
+    // ========================================================
     @GetMapping("/events")
-    public List<CalendarEventDto> list() {
-        return calendarEventService.listAll();
+    public List<CalendarEventDto> getEvents(
+            @RequestParam(required = false) String start,
+            @RequestParam(required = false) String end
+    ) throws GeneralSecurityException, IOException {
+
+        return calendarEventService.getEvents(start, end);
     }
 
+    // ========================================================
+    // 📌 일정 생성
+    // ========================================================
     @PostMapping("/events")
-    public CalendarEventDto create(@RequestBody CreateEventReq req) throws GeneralSecurityException, IOException {
+    public CalendarEventDto create(@RequestBody CreateEventReq req)
+            throws GeneralSecurityException, IOException {
+
         return calendarEventService.create(req);
     }
 
-    @PutMapping("/events/{id}")
+    // ========================================================
+    // 📌 일정 수정
+    // ========================================================
+    @PutMapping("/events/{eventId}")
     public CalendarEventDto update(
-            @PathVariable String id,
+            @PathVariable String eventId,
             @RequestBody CreateEventReq req
     ) throws GeneralSecurityException, IOException {
-        return calendarEventService.update(id, req);
+
+        return calendarEventService.update(eventId, req);
     }
 
-    @DeleteMapping("/events/{id}")
-    public void delete(@PathVariable String id) throws GeneralSecurityException, IOException {
-        calendarEventService.delete(id);
+    // ========================================================
+    // 📌 일정 삭제
+    // ========================================================
+    @DeleteMapping("/events/{eventId}")
+    public void delete(@PathVariable String eventId)
+            throws GeneralSecurityException, IOException {
+
+        calendarEventService.delete(eventId);
     }
 }
-

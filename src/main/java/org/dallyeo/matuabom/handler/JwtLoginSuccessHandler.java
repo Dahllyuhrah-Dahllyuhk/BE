@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -25,13 +26,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final String KAKAO_REDIRECT_URL = "http://localhost:3000";
-    private static final String GOOGLE_REDIRECT_URL = "http://localhost:3000";
+    @Value("${app.frontend-base-url:http://localhost:3000}")
+    private String frontendBaseUrl;
 
     private final UserService userService;
     private final GoogleOAuthClientService googleOAuthClientService;
     private final OAuth2AuthorizedClientService oAuth2AuthorizedClientService;
     private final JwtUtil jwtUtil;
+
+    private final org.dallyeo.matuabom.service.GoogleSyncService googleSyncService;
 
     @Override
     public void onAuthenticationSuccess(
@@ -91,7 +94,7 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         cookie.setMaxAge((int) Duration.ofHours(1).getSeconds());
         response.addCookie(cookie);
 
-        response.sendRedirect(KAKAO_REDIRECT_URL);
+        response.sendRedirect(frontendBaseUrl);
     }
 
     private KakaoUserInfo extractKakaoInfo(Authentication auth) {
@@ -148,7 +151,7 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         String jwt = getCookie(request, "ACCESS_TOKEN");
         String userId = (jwt != null) ? jwtUtil.getUserIdFromToken(jwt) : null;
         if (userId == null) {
-            response.sendRedirect(GOOGLE_REDIRECT_URL);
+            response.sendRedirect(frontendBaseUrl);
             return;
         }
 
@@ -166,8 +169,10 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         // E. 토큰 DB 저장 (분리형 구조)
         googleOAuthClientService.saveTokens(userId, googleEmail, googleClient);
 
+        googleSyncService.runInitialSync(userId);
+
         // F. redispatch
-        response.sendRedirect(GOOGLE_REDIRECT_URL);
+        response.sendRedirect(frontendBaseUrl);
     }
 
 

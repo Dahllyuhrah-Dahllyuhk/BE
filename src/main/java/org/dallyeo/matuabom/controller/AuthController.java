@@ -27,7 +27,7 @@ public class AuthController {
             User user = userRepository.findById(userId).orElseThrow(() ->new UsernameNotFoundException("user not found"));
             return ResponseEntity.ok().body(MeDto.createDto(user));
         } catch (Exception e) {
-            return ResponseEntity.ok().body(null);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid token");
         }
     }
 }
