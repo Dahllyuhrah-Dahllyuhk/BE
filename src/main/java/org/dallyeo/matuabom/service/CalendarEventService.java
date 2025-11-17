@@ -1,7 +1,6 @@
 package org.dallyeo.matuabom.service;
 
 import lombok.RequiredArgsConstructor;
-import org.dallyeo.matuabom.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
 import org.dallyeo.matuabom.repository.CalendarEventRepository;
@@ -22,11 +21,12 @@ public class CalendarEventService {
     private final GoogleCalendarService googleCalendarService;
     private final GoogleCalendarQueryService googleCalendarQueryService;
     private final GoogleSyncService googleSyncService;
+    private final EventSseService eventSseService;
 
     private String userId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null) {
-            throw new IllegalStateException("인증 정보가 없습니다.");
+            throw new IllegalStateException("no authenticated user");
         }
         return auth.getName();
     }
@@ -34,19 +34,27 @@ public class CalendarEventService {
     // ==================================================
     // 조회
     // ==================================================
-    public List<CalendarEventDto> getEvents(String start, String end)
-            throws GeneralSecurityException, IOException {
-
+    /**
+     * FE에서 /api/calendar/events?start=...&end=... 로 호출하는 메서드
+     * start, end 가 null이면 전체 조회
+     * start, end 가 epoch millis 문자열이면 범위 조회
+     */
+    public List<CalendarEventDto> getEvents(String start, String end) {
         String uid = userId();
 
-        // 구글 연동된 유저라면, 조회 시점에 비동기로 증분 동기화 한 번 태움
-        if (googleTokens.isLinked(uid)) {
-            googleSyncService.runIncrementalSync(uid);
-        }
+        Long startTs = parseLongOrNull(start);
+        Long endTs = parseLongOrNull(end);
 
-        // 지금 FE 는 start/end 없이 전체 조회를 사용 중이라
-        // 일단은 전체 조회로 두고, 나중에 기간 필터가 필요하면 start/end → epoch 변환해서 넘기면 됨
-        return googleCalendarQueryService.query(uid, null, null);
+        return googleCalendarQueryService.query(uid, startTs, endTs);
+    }
+
+    private Long parseLongOrNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     // ==================================================
@@ -65,6 +73,9 @@ public class CalendarEventService {
             googleSyncService.syncCreateAsync(uid, req);
         }
 
+        // 3) 🔥 FE 에게 “이벤트 변경” 알림
+        eventSseService.sendEventsUpdated();
+
         return saved;
     }
 
@@ -81,12 +92,16 @@ public class CalendarEventService {
                 .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
 
         // 1) 로컬 DB 업데이트
+        //   - GoogleCalendarService.updateLocalEvent 가 userId 는 내부에서 resolve 하므로 uid 인자 제거
         CalendarEventDto updated = googleCalendarService.updateLocalEvent(eventId, req);
 
-        // 2) 구글 연동된 유저면 비동기로 구글 쪽도 업데이트
+        // 2) 구글 연동된 유저면 비동기로 구글 일정도 수정
         if (googleTokens.isLinked(uid)) {
             googleSyncService.syncUpdateAsync(uid, eventId, req);
         }
+
+        // 3) 🔥 FE 알림
+        eventSseService.sendEventsUpdated();
 
         return updated;
     }
@@ -95,6 +110,7 @@ public class CalendarEventService {
     // 삭제
     // ==================================================
     public void delete(String eventId) throws GeneralSecurityException, IOException {
+
         String uid = userId();
 
         // 소유자 검증
@@ -108,5 +124,8 @@ public class CalendarEventService {
         if (googleTokens.isLinked(uid)) {
             googleSyncService.syncDeleteAsync(uid, eventId);
         }
+
+        // 3) 🔥 FE 알림
+        eventSseService.sendEventsUpdated();
     }
 }
