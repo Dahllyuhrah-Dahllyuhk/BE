@@ -17,58 +17,78 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CalendarEventService {
 
-    private final UserService userService;
+    private final CalendarEventRepository repository;
     private final GoogleOAuthClientService googleTokens;
     private final GoogleCalendarService googleCalendarService;
-    private final CalendarEventRepository repository;
+    private final GoogleCalendarQueryService googleCalendarQueryService;
+    private final GoogleSyncService googleSyncService;
 
-    /** userKey 가져오기 */
     private String userId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            throw new IllegalStateException("인증 정보가 없습니다.");
+        }
         return auth.getName();
     }
-
 
     // ==================================================
     // 조회
     // ==================================================
-    public List<CalendarEventDto> listAll() {
-        return repository.findByUserEmailOrderByStartTimestampAsc(userId());
-    }
+    public List<CalendarEventDto> getEvents(String start, String end)
+            throws GeneralSecurityException, IOException {
 
+        String uid = userId();
+
+        // 구글 연동된 유저라면, 조회 시점에 비동기로 증분 동기화 한 번 태움
+        if (googleTokens.isLinked(uid)) {
+            googleSyncService.runIncrementalSync(uid);
+        }
+
+        // 지금 FE 는 start/end 없이 전체 조회를 사용 중이라
+        // 일단은 전체 조회로 두고, 나중에 기간 필터가 필요하면 start/end → epoch 변환해서 넘기면 됨
+        return googleCalendarQueryService.query(uid, null, null);
+    }
 
     // ==================================================
     // 생성
     // ==================================================
-    public CalendarEventDto create(CreateEventReq req) throws GeneralSecurityException, IOException {
+    public CalendarEventDto create(CreateEventReq req)
+            throws GeneralSecurityException, IOException {
 
         String uid = userId();
 
+        // 1) 로컬 DB에 먼저 저장
+        CalendarEventDto saved = googleCalendarService.createLocalEvent(req);
+
+        // 2) 구글 연동된 유저면, 구글 쪽은 비동기로 반영
         if (googleTokens.isLinked(uid)) {
-            // 구글 연동 → 구글 + DB 저장
-            GoogleOAuthClientEntity tokens = googleTokens.getTokens(uid)
-                    .orElseThrow();
-            return googleCalendarService.createGoogleEvent(tokens, req);
+            googleSyncService.syncCreateAsync(uid, req);
         }
 
-        // DB 전용
-        return googleCalendarService.createLocalEvent(req);
+        return saved;
     }
 
     // ==================================================
     // 수정
     // ==================================================
-    public CalendarEventDto update(String eventId, CreateEventReq req) throws GeneralSecurityException, IOException {
+    public CalendarEventDto update(String eventId, CreateEventReq req)
+            throws GeneralSecurityException, IOException {
 
         String uid = userId();
 
+        // 소유자 검증 (있으면)
+        repository.findByIdAndUserEmail(eventId, uid)
+                .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
+
+        // 1) 로컬 DB 업데이트
+        CalendarEventDto updated = googleCalendarService.updateLocalEvent(eventId, req);
+
+        // 2) 구글 연동된 유저면 비동기로 구글 쪽도 업데이트
         if (googleTokens.isLinked(uid)) {
-            GoogleOAuthClientEntity tokens = googleTokens.getTokens(uid)
-                    .orElseThrow();
-            return googleCalendarService.updateGoogleEvent(tokens, eventId, req);
+            googleSyncService.syncUpdateAsync(uid, eventId, req);
         }
 
-        return googleCalendarService.updateLocalEvent(eventId, req);
+        return updated;
     }
 
     // ==================================================
@@ -77,13 +97,16 @@ public class CalendarEventService {
     public void delete(String eventId) throws GeneralSecurityException, IOException {
         String uid = userId();
 
+        // 소유자 검증
+        repository.findByIdAndUserEmail(eventId, uid)
+                .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
+
+        // 1) 로컬 DB에서 삭제
+        googleCalendarService.deleteLocalEvent(eventId);
+
+        // 2) 구글 연동된 유저면 비동기로 구글 일정도 삭제
         if (googleTokens.isLinked(uid)) {
-            GoogleOAuthClientEntity tokens = googleTokens.getTokens(uid)
-                    .orElseThrow();
-            googleCalendarService.deleteGoogleEvent(tokens, eventId);
-        } else {
-            googleCalendarService.deleteLocalEvent(eventId);
+            googleSyncService.syncDeleteAsync(uid, eventId);
         }
     }
 }
-
