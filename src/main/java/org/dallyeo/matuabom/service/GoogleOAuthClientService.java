@@ -48,4 +48,12 @@ public class GoogleOAuthClientService {
     public boolean isLinked(String userId) {
         return repo.findByUserId(userId).isPresent();
     }
+
+    public Optional<GoogleOAuthClientEntity> findByChannelId(String channelId) {
+            return repo.findByWatchChannelId(channelId);
+        }
+
+    public GoogleOAuthClientEntity save(GoogleOAuthClientEntity entity) {
+            return repo.save(entity);
+        }
 }
