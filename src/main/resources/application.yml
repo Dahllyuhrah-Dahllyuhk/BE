@@ -4,6 +4,7 @@ server:
 spring:
   application:
     name: matuabom
+
   security:
     oauth2:
       client:

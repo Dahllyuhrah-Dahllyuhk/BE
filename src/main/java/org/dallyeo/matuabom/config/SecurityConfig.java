@@ -62,7 +62,7 @@ public class SecurityConfig {
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
 
                         // protected API
-                        .requestMatchers("/api/calendar/**").authenticated()
+                        .requestMatchers("/api/calendar/**","/api/auth/me","/api/friends/**").authenticated()
 
                         .anyRequest().permitAll()
                 )
