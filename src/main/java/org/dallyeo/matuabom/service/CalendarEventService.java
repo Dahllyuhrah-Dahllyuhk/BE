@@ -1,5 +1,6 @@
 package org.dallyeo.matuabom.service;
 
+import org.dallyeo.matuabom.domain.GoogleOAuthClientEntity;
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
@@ -20,7 +21,6 @@ public class CalendarEventService {
     private final GoogleOAuthClientService googleTokens;
     private final GoogleCalendarService googleCalendarService;
     private final GoogleCalendarQueryService googleCalendarQueryService;
-    private final GoogleSyncService googleSyncService;
     private final EventSseService eventSseService;
 
     private String userId() {
@@ -32,19 +32,12 @@ public class CalendarEventService {
     }
 
     // ==================================================
-    // 조회
+    // 조회 (기존과 동일)
     // ==================================================
-    /**
-     * FE에서 /api/calendar/events?start=...&end=... 로 호출하는 메서드
-     * start, end 가 null이면 전체 조회
-     * start, end 가 epoch millis 문자열이면 범위 조회
-     */
     public List<CalendarEventDto> getEvents(String start, String end) {
         String uid = userId();
-
         Long startTs = parseLongOrNull(start);
         Long endTs = parseLongOrNull(end);
-
         return googleCalendarQueryService.query(uid, startTs, endTs);
     }
 
@@ -64,18 +57,22 @@ public class CalendarEventService {
             throws GeneralSecurityException, IOException {
 
         String uid = userId();
+        CalendarEventDto saved;
 
-        // 1) 로컬 DB에 먼저 저장
-        CalendarEventDto saved = googleCalendarService.createLocalEvent(req);
-
-        // 2) 구글 연동된 유저면, 구글 쪽은 비동기로 반영
         if (googleTokens.isLinked(uid)) {
-            googleSyncService.syncCreateAsync(uid, req);
+            // [A. 연동된 사용자]
+            GoogleOAuthClientEntity tokens = googleTokens
+                    .getTokens(uid)
+                    .orElseThrow(() -> new IllegalStateException("Google token not found or invalid for user: " + uid));
+
+            saved = googleCalendarService.createGoogleEvent(tokens, uid, req);
+
+        } else {
+            // [B. 연동 안 된 사용자]
+            saved = googleCalendarService.createLocalEvent(req);
         }
 
-        // 3) 🔥 FE 에게 “이벤트 변경” 알림
         eventSseService.sendEventsUpdated();
-
         return saved;
     }
 
@@ -87,22 +84,25 @@ public class CalendarEventService {
 
         String uid = userId();
 
-        // 소유자 검증 (있으면)
         repository.findByIdAndUserEmail(eventId, uid)
                 .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
 
-        // 1) 로컬 DB 업데이트
-        //   - GoogleCalendarService.updateLocalEvent 가 userId 는 내부에서 resolve 하므로 uid 인자 제거
-        CalendarEventDto updated = googleCalendarService.updateLocalEvent(eventId, req);
+        CalendarEventDto updated;
 
-        // 2) 구글 연동된 유저면 비동기로 구글 일정도 수정
         if (googleTokens.isLinked(uid)) {
-            googleSyncService.syncUpdateAsync(uid, eventId, req);
+            // [A. 연동된 사용자]
+            GoogleOAuthClientEntity tokens = googleTokens
+                    .getTokens(uid)
+                    .orElseThrow(() -> new IllegalStateException("Google token not found or invalid for user: " + uid));
+
+            updated = googleCalendarService.updateGoogleEvent(tokens, uid, eventId, req);
+
+        } else {
+            // [B. 연동 안 된 사용자]
+            updated = googleCalendarService.updateLocalEvent(eventId, req);
         }
 
-        // 3) 🔥 FE 알림
         eventSseService.sendEventsUpdated();
-
         return updated;
     }
 
@@ -113,19 +113,22 @@ public class CalendarEventService {
 
         String uid = userId();
 
-        // 소유자 검증
         repository.findByIdAndUserEmail(eventId, uid)
                 .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
 
-        // 1) 로컬 DB에서 삭제
-        googleCalendarService.deleteLocalEvent(eventId);
-
-        // 2) 구글 연동된 유저면 비동기로 구글 일정도 삭제
         if (googleTokens.isLinked(uid)) {
-            googleSyncService.syncDeleteAsync(uid, eventId);
+            // [A. 연동된 사용자]
+            GoogleOAuthClientEntity tokens = googleTokens
+                    .getTokens(uid)
+                    .orElseThrow(() -> new IllegalStateException("Google token not found or invalid for user: " + uid));
+
+            googleCalendarService.deleteGoogleEvent(tokens, uid, eventId);
+
+        } else {
+            // [B. 연동 안 된 사용자]
+            googleCalendarService.deleteLocalEvent(eventId);
         }
 
-        // 3) 🔥 FE 알림
         eventSseService.sendEventsUpdated();
     }
 }
