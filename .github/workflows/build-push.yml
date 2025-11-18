@@ -60,6 +60,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+            
             # 1. 'Deploy' 리포지토리가 clone된 폴더로 이동
             cd /home/ubuntu/matuabom
             
@@ -70,7 +72,7 @@ jobs:
             docker compose pull be
             
             # 4. BE 서비스만 재시작
-            docker compose up -d --no-deps be
+            docker compose up -d --no-deps --force-recreate be
             
             # 5. 사용하지 않는 (dangling) 이미지 정리
             docker image prune -f
