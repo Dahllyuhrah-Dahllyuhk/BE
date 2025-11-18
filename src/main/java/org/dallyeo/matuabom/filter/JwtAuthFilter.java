@@ -6,6 +6,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.dallyeo.matuabom.security.CustomPrincipal;
 import org.dallyeo.matuabom.util.JwtUtil;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,8 +37,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (token != null) {
             try {
                 String userId = jwtUtil.validateAndGetSub(token);
+                CustomPrincipal customPrincipal = new CustomPrincipal(userId, token);
                 var auth = new UsernamePasswordAuthenticationToken(
-                        userId, null, java.util.Collections.emptyList()
+                        customPrincipal, null, java.util.Collections.emptyList()
                 );
                 auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(auth);
