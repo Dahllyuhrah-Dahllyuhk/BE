@@ -6,7 +6,6 @@ import org.dallyeo.matuabom.domain.User;
 import org.dallyeo.matuabom.dto.AddByCodeRequest;
 import org.dallyeo.matuabom.dto.FriendDto;
 import org.dallyeo.matuabom.dto.InviteCodeResponse;
-import org.dallyeo.matuabom.security.CustomPrincipal;
 import org.dallyeo.matuabom.service.FriendService;
 import org.dallyeo.matuabom.service.InviteCodeService;
 import org.dallyeo.matuabom.util.JwtUtil;
@@ -31,16 +30,15 @@ public class FriendController {
 
 
     @GetMapping("/invite-code")
-    public ResponseEntity<InviteCodeResponse> getMyInviteCode(@AuthenticationPrincipal CustomPrincipal customPrincipal) {
-        InviteCode inviteCode = inviteCodeService.getOrCreateMyInviteCode(customPrincipal.getUserId());
-
+    public ResponseEntity<InviteCodeResponse> getMyInviteCode(@AuthenticationPrincipal String userId) {
+        InviteCode inviteCode = inviteCodeService.getOrCreateMyInviteCode(userId);
         return ResponseEntity.ok().body(new InviteCodeResponse(inviteCode.getOwnerUserId(), inviteCode.getCode()));
     }
 
     @PostMapping("/addFriend")
-    public ResponseEntity<?> addByCode(@AuthenticationPrincipal CustomPrincipal customPrincipal,@RequestBody AddByCodeRequest dto) {
+    public ResponseEntity<?> addByCode(@AuthenticationPrincipal String userId,@RequestBody AddByCodeRequest dto) {
         try {
-            User friend = friendService.addFriend(customPrincipal.getUserId(), dto.getCode());
+            User friend = friendService.addFriend(userId, dto.getCode());
             return ResponseEntity.ok().body(FriendDto.create(friend)); //친구 추가된 친구 유저의 정보 반환
         } catch (IllegalArgumentException e) {
             //초대코드가 없거나 잘못된 입력
@@ -61,8 +59,8 @@ public class FriendController {
     }
 
     @GetMapping
-    public ResponseEntity<List<FriendDto>> getMyFriends(@AuthenticationPrincipal CustomPrincipal customPrincipal) {
-        List<FriendDto> friends = friendService.getFriendsList(customPrincipal.getUserId())
+    public ResponseEntity<List<FriendDto>> getMyFriends(@AuthenticationPrincipal String userId) {
+        List<FriendDto> friends = friendService.getFriendsList(userId)
                 .stream()
                 .map(FriendDto::create)
                 .toList();
