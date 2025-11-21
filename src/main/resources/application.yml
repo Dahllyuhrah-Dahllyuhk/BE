@@ -4,8 +4,6 @@ server:
 spring:
   application:
     name: matuabom
-  main:
-    web-application-type: servlet  # WebMVC로 강제
   security:
     oauth2:
       client:

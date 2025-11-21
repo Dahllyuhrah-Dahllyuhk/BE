@@ -3,7 +3,6 @@ package org.dallyeo.matuabom.handler;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.KakaoUserInfo;
 import org.dallyeo.matuabom.dto.UpsertKakaoUserDto;
@@ -11,7 +10,6 @@ import org.dallyeo.matuabom.service.GoogleOAuthClientService;
 import org.dallyeo.matuabom.service.UserService;
 import org.dallyeo.matuabom.util.JwtUtil;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
@@ -52,21 +50,15 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
 
         if ("kakao".equals(provider)) {
             handleKakaoLogin(response, oauthToken, authentication);
-            // 세션/보안 컨텍스트 정리
-            cleanupSession(request, response);
             return;
         }
 
         if ("google".equals(provider)) {
             handleGoogleLogin(request, response, oauthToken, authentication);
-            // 세션/보안 컨텍스트 정리
-            cleanupSession(request, response);
             return;
         }
 
-        // fallback
-        cleanupSession(request, response);
-        response.sendRedirect(frontendBaseUrl);
+        response.sendRedirect("http://localhost:3000");
     }
 
 
@@ -198,56 +190,5 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
             if (name.equals(c.getName())) return c.getValue();
         }
         return null;
-    }
-
-    /**
-     * 로그인(소셜) 완료 후 서버 세션과 스프링 시큐리티 컨텍스트를 정리합니다.
-     * - HttpSession이 존재하면 SPRING_SECURITY_CONTEXT와 OAuth2 요청 객체를 제거하고 invalidate합니다.
-     * - SecurityContextHolder를 clear 합니다.
-     * - JSESSIONID 같은 세션 쿠키는 만료시켜 클라이언트에서도 제거되도록 합니다.
-     */
-    private void cleanupSession(HttpServletRequest request, HttpServletResponse response) {
-        try {
-            // 1) HttpSession 정리
-            HttpSession session = request.getSession(false);
-            if (session != null) {
-                // 스프링 시큐리티 컨텍스트 제거
-                try {
-                    session.removeAttribute("SPRING_SECURITY_CONTEXT");
-                } catch (Exception ignored) {}
-
-                // OAuth2 authorization request가 세션에 남아있을 수 있으니 제거
-                // 프레임워크 버전/구성에 따라 이름이 다를 수 있으므로 몇 가지 후보를 제거
-                try { session.removeAttribute("oauth2_auth_request"); } catch (Exception ignored) {}
-                try { session.removeAttribute("OAUTH2_AUTHORIZATION_REQUEST"); } catch (Exception ignored) {}
-                try { session.removeAttribute("org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_ATTR_NAME"); } catch (Exception ignored) {}
-
-                // 세션 무효화
-                try { session.invalidate(); } catch (IllegalStateException ignored) {}
-            }
-
-            // 2) SecurityContext 정리
-            SecurityContextHolder.clearContext();
-
-            // 3) 세션 쿠키 만료 (JSESSIONID 등)
-            ResponseCookie expiredSessionCookie = ResponseCookie.from("JSESSIONID", "")
-                    .path("/")
-                    .httpOnly(true)
-                    .maxAge(Duration.ofSeconds(0))
-                    .build();
-            response.addHeader(HttpHeaders.SET_COOKIE, expiredSessionCookie.toString());
-
-            // 4) 만약 OAuth2 관련 임시 쿠키가 있다면 만료
-            ResponseCookie expiredOAuth2Cookie = ResponseCookie.from("OAUTH2_AUTH_REQUEST", "")
-                    .path("/")
-                    .httpOnly(true)
-                    .maxAge(Duration.ofSeconds(0))
-                    .build();
-            response.addHeader(HttpHeaders.SET_COOKIE, expiredOAuth2Cookie.toString());
-
-        } catch (Exception e) {
-            // 실패하더라도 로그인 성공 로직을 방해하지 않도록 swallow
-            // (원하면 로깅 추가 가능)
-        }
     }
 }
