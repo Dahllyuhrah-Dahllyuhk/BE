@@ -37,6 +37,12 @@ public class FriendController {
         return ResponseEntity.ok().body(FriendDto.create(friend));
     }
 
+    @DeleteMapping("/{friendId}")
+    public ResponseEntity<Void> deleteFriend(@PathVariable String friendId, @AuthenticationPrincipal CustomPrincipal principal) {
+        friendService.deleteFriend(principal.getUserId(), friendId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     public ResponseEntity<List<FriendDto>> getMyFriends(@AuthenticationPrincipal CustomPrincipal principal) {
         List<FriendDto> friends = friendService.getFriendsList(principal.getUserId())
