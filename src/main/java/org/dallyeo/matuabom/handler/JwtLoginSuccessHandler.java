@@ -17,6 +17,8 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.HttpHeaders;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -88,11 +90,14 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
 
         // JWT 쿠키 저장
         String accessToken = jwtUtil.createAccessToken(userId);
-        Cookie cookie = new Cookie("ACCESS_TOKEN", accessToken);
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge((int) Duration.ofHours(1).getSeconds());
-        response.addCookie(cookie);
+        ResponseCookie cookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
+            .path("/")
+            .httpOnly(true) // JS에서 접근 불가 (보안)
+            .secure(true)  // 💡 로컬(http)에서는 false여야 함
+            .maxAge(Duration.ofHours(1))
+            .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 
         response.sendRedirect(frontendBaseUrl);
     }

@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
 import org.dallyeo.matuabom.repository.CalendarEventRepository;
+import org.dallyeo.matuabom.security.CustomPrincipal; // ✅ CustomPrincipal 임포트
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -23,16 +24,25 @@ public class CalendarEventService {
     private final GoogleCalendarQueryService googleCalendarQueryService;
     private final EventSseService eventSseService;
 
+    // 🔥 FIX: CustomPrincipal로 형변환하여 정확한 userId 추출
     private String userId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getName() == null) {
-            throw new IllegalStateException("no authenticated user");
+
+        if (auth != null && auth.getPrincipal() instanceof CustomPrincipal) {
+            CustomPrincipal principal = (CustomPrincipal) auth.getPrincipal();
+            return principal.getUserId(); // ✅ 정확한 String ID 반환 (예: "6918...")
         }
-        return auth.getName();
+
+        // 혹시 모를 호환성 (Principal이 String인 경우)
+        if (auth != null && auth.getPrincipal() instanceof String) {
+            return (String) auth.getPrincipal();
+        }
+
+        throw new IllegalStateException("no authenticated user");
     }
 
     // ==================================================
-    // 조회 (기존과 동일)
+    // 조회
     // ==================================================
     public List<CalendarEventDto> getEvents(String start, String end) {
         String uid = userId();
