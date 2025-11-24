@@ -7,24 +7,31 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CalendarEventRepository extends MongoRepository<CalendarEventDto, String> {
-    void deleteByUserEmail(String userEmail);
 
-    List<CalendarEventDto> findByUserEmailOrderByStartTimestampAsc(String userEmail);
+    // 🔥 FIX: userEmail -> userId로 변경
+    void deleteByUserId(String userId);
 
-    List<CalendarEventDto> findByUserEmailAndStartTimestampBetweenOrderByStartTimestampAsc(
-            String userEmail, Long startTs, Long endTs
+    // 🔥 FIX: userEmail -> userId로 변경
+    List<CalendarEventDto> findByUserIdOrderByStartTimestampAsc(String userId);
+
+    // 🔥 FIX: userEmail -> userId로 변경
+    List<CalendarEventDto> findByUserIdAndStartTimestampBetweenOrderByStartTimestampAsc(
+            String userId, Long startTs, Long endTs
     );
 
     /**
      * 주(week) 단위·월(month) 단위 조회에서 "겹치는" 일정까지 포함하려면
      * [start < rangeEnd && end > rangeStart] 조건이 필요함.
      */
-    List<CalendarEventDto> findByUserEmailAndStartTimestampLessThanAndEndTimestampGreaterThanOrderByStartTimestampAsc(
-            String userEmail, Long rangeEnd, Long rangeStart
+    // 🔥 FIX: userEmail -> userId로 변경
+    List<CalendarEventDto> findByUserIdAndStartTimestampLessThanAndEndTimestampGreaterThanOrderByStartTimestampAsc(
+            String userId, Long rangeEnd, Long rangeStart
     );
 
-    void deleteByIdAndUserEmail(String id, String userEmail);
+    // 🔥 FIX: userEmail -> userId로 변경
+    void deleteByIdAndUserId(String id, String userId);
 
     /** 업데이트/삭제 시 소유자 검증용 */
-    Optional<CalendarEventDto> findByIdAndUserEmail(String id, String userEmail);
+    // 🔥 FIX: userEmail -> userId로 변경
+    Optional<CalendarEventDto> findByIdAndUserId(String id, String userId);
 }

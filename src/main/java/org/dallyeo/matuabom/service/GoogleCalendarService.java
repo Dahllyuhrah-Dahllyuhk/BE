@@ -4,8 +4,6 @@ import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
-// 🔥 FIX 1: 잘못된 @Value import 제거
-// import com.google.api.client.util.Value;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.EventDateTime;
@@ -16,9 +14,10 @@ import org.dallyeo.matuabom.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
 import org.dallyeo.matuabom.repository.CalendarEventRepository;
+import org.dallyeo.matuabom.security.CustomPrincipal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value; // 🔥 FIX 1: 올바른 Spring @Value import
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -42,7 +41,6 @@ public class GoogleCalendarService {
     private static final DateTimeFormatter ISO_OFFSET_DT = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
     private static final Pattern DATE_ONLY_RE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
 
-    // 🔥 FIX 1: Spring의 @Value 어노테이션이 올바르게 주입됩니다.
     @Value("${app.backend-base-url:http://localhost:8080}")
     private String backendBaseUrl;
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarService.class);
@@ -114,6 +112,13 @@ public class GoogleCalendarService {
     private String resolveUserKey() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return "anonymous";
+
+        // ✅ FIX: CustomPrincipal에서 정확한 ID를 추출
+        if (auth.getPrincipal() instanceof CustomPrincipal) {
+            CustomPrincipal principal = (CustomPrincipal) auth.getPrincipal();
+            return principal.getUserId();
+        }
+
         return auth.getName();
     }
 
@@ -167,7 +172,7 @@ public class GoogleCalendarService {
         // CalendarEventDto에 Google Event ID를 @Id 필드(id)에 설정합니다.
         return CalendarEventDto.builder()
                 .id(event.getId())
-                .userEmail(userKey)
+                .userId(userKey) // 🔥 FIX: userEmail 대신 userId에 설정
                 .title(event.getSummary())
                 .description(event.getDescription())
                 .start(sIso)
@@ -294,7 +299,8 @@ public class GoogleCalendarService {
 
         // 이전 색상 등 보존
         Map<String,String> previousColors = new HashMap<>();
-        repository.findByUserEmailOrderByStartTimestampAsc(resolvedKey)
+        // 🔥 FIX: findByUserEmail... -> findByUserId...로 변경
+        repository.findByUserIdOrderByStartTimestampAsc(resolvedKey)
                 .forEach(e -> { if (e.getColor() != null) previousColors.put(e.getId(), e.getColor()); });
 
         // 변환 + 저장
@@ -308,7 +314,8 @@ public class GoogleCalendarService {
                 })
                 .collect(Collectors.toList());
 
-        repository.deleteByUserEmail(resolvedKey);
+        // 🔥 FIX: deleteByUserEmail -> deleteByUserId로 변경
+        repository.deleteByUserId(resolvedKey);
         repository.saveAll(dtos);
 
         return dtos;
@@ -477,7 +484,7 @@ public class GoogleCalendarService {
                  logger.warn("Event {} already deleted in Google (404/410). Ignoring.", eventId);
                 // no-op
             }
-            // 🔥 FIX 3: 401/403 (인증/권한) 에러 로깅 강화
+            // 401/403 (인증/권한) 에러 로깅 강화
             else if (code == 401 || code == 403) {
                 logger.error("Google API auth error (401/403) deleting event {}. Check tokens for user {}.", eventId, userKey, e);
             }
@@ -490,8 +497,9 @@ public class GoogleCalendarService {
 
         // 2) 우리 DB에서도 삭제 (권한 체크)
         repository.findById(eventId).ifPresent(ev -> {
-            if (!Objects.equals(ev.getUserEmail(), userKey)) {
-                logger.warn("User {} tried to delete event {} owned by {}", userKey, eventId, ev.getUserEmail());
+            // 🔥 FIX: getUserEmail -> getUserId로 변경
+            if (!Objects.equals(ev.getUserId(), userKey)) {
+                logger.warn("User {} tried to delete event {} owned by {}", userKey, eventId, ev.getUserId());
                 throw new IllegalStateException("권한이 없는 일정입니다.");
             }
             repository.deleteById(eventId);
@@ -502,10 +510,10 @@ public class GoogleCalendarService {
        📌 로컬 전용 (DB-only)
        ============================================================ */
 
-    public CalendarEventDto createLocalEvent(CreateEventReq req) {
+    // ✅ FIX: uid 매개변수 추가
+    public CalendarEventDto createLocalEvent(String uid, CreateEventReq req) {
 
         ZoneId zone = DEFAULT_ZONE;
-        String userKey = resolveUserKey();
 
         boolean allDay =
                 Boolean.TRUE.equals(req.getAllDay()) ||
@@ -550,10 +558,9 @@ public class GoogleCalendarService {
         }
 
         // 로컬 전용 이벤트는 UUID를 ID로 사용합니다.
-        // (이 이벤트는 구글 연동이 안 된 유저를 위한 것입니다)
         CalendarEventDto dto = CalendarEventDto.builder()
                 .id(UUID.randomUUID().toString())
-                .userEmail(userKey)
+                .userId(uid) // 🔥 FIX: userEmail 대신 userId에 설정
                 .title(
                         req.getTitle() == null || req.getTitle().isBlank()
                                 ? "(제목없음)"
@@ -572,15 +579,16 @@ public class GoogleCalendarService {
         return repository.save(dto);
     }
 
-    public CalendarEventDto updateLocalEvent(String eventId, CreateEventReq req) {
+    // ✅ FIX: uid 매개변수 추가
+    public CalendarEventDto updateLocalEvent(String uid, String eventId, CreateEventReq req) {
 
         ZoneId zone = DEFAULT_ZONE;
-        String userKey = resolveUserKey();
 
         CalendarEventDto existing = repository.findById(eventId)
                 .orElseThrow(() -> new IllegalArgumentException("event not found: " + eventId));
 
-        if (!existing.getUserEmail().equals(userKey))
+        // 🔥 FIX: getUserEmail -> getUserId로 변경
+        if (!existing.getUserId().equals(uid))
             throw new IllegalStateException("권한이 없는 일정입니다.");
 
         // (날짜/시간 처리 로직 ... 생략 없음)
@@ -656,12 +664,13 @@ public class GoogleCalendarService {
         return repository.save(existing);
     }
 
-    public void deleteLocalEvent(String eventId) {
-        String userKey = resolveUserKey();
+    // ✅ FIX: uid 매개변수 추가
+    public void deleteLocalEvent(String uid, String eventId) {
 
         repository.findById(eventId)
                 .ifPresent(ev -> {
-                    if (!ev.getUserEmail().equals(userKey))
+                    // 🔥 FIX: getUserEmail -> getUserId로 변경
+                    if (!ev.getUserId().equals(uid))
                         throw new IllegalStateException("권한 없음");
 
                     repository.deleteById(eventId);
@@ -711,11 +720,12 @@ public class GoogleCalendarService {
                 boolean deleted = "cancelled".equals(ev.getStatus());
 
                 if (deleted) {
-                    // 🔥 FIX 2: 삭제 로직 수정 (findById -> delete(entity) 및 로깅 강화)
+                    // Upsert 로직 (수정 시 중복 생성 방지)
                     Optional<CalendarEventDto> eventOpt = repository.findById(eventId);
                     if (eventOpt.isPresent()) {
                         CalendarEventDto dto = eventOpt.get();
-                        if (Objects.equals(dto.getUserEmail(), userKey)) {
+                        // 🔥 FIX: getUserEmail -> getUserId로 변경
+                        if (Objects.equals(dto.getUserId(), userKey)) {
                             repository.delete(dto); // ID 대신 엔티티로 삭제
                             logger.info("Deleted event {} (Webhook cancelled) for user {}", eventId, userKey);
                         } else {
@@ -726,7 +736,7 @@ public class GoogleCalendarService {
                         logger.warn("Event {} not found in DB for webhook delete.", eventId);
                     }
                 } else {
-                    // 🔥 FIX 2: Upsert 로직 (수정 시 중복 생성 방지)
+                    // Upsert 로직 (수정 시 중복 생성 방지)
                     CalendarEventDto dtoFromGoogle = toDto(ev, userKey, zone);
 
                     repository.findById(eventId).ifPresentOrElse(existing -> {
