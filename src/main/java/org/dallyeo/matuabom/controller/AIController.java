@@ -5,6 +5,7 @@ import java.security.GeneralSecurityException;
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.Request.AIRequestDTO;
 import org.dallyeo.matuabom.service.AIService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,10 +20,10 @@ public class AIController {
 
     //사용자 질의를 받아서 FastAPI 로 전송
     @PostMapping("/call")
-    public void call(
+    public ResponseEntity<?> call(
         @RequestBody AIRequestDTO request
     ) throws GeneralSecurityException, IOException {
-        aiService.call(request);
+        return aiService.call(request);
     }
 
 }
