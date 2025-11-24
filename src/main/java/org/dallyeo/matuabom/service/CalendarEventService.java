@@ -60,6 +60,25 @@ public class CalendarEventService {
         return googleCalendarQueryService.query(uid, startTs, endTs);
     }
 
+    //특정 기간의 특정 유저 캘린더 이벤트를 조회합니다
+    // 특정 기간 내 특정 유저의 캘린더 이벤트를 키워드로 조회합니다
+    public List<CalendarEventDto> getEventsByKeyword(Long startTs, Long endTs, String keyword) {
+        String uid = userId();
+        Long queryStart = (startTs != null) ? startTs : 0L;
+        Long queryEnd = (endTs != null) ? endTs : Long.MAX_VALUE;
+
+        // 2. 분기 처리
+        if (keyword == null || keyword.isBlank() || keyword.equals("None")) {
+            System.out.println("호이");
+            return getEventsByUserId(uid, startTs, endTs );
+        } else {
+
+            return repository.findByUserIdAndTitleRegex(uid, keyword, queryEnd, queryStart);
+        }
+    }
+
+
+
     private Long parseLongOrNull(String value) {
         if (value == null || value.isBlank()) return null;
         try {
