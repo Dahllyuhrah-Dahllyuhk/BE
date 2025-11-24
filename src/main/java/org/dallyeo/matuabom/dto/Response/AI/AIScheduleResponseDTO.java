@@ -1,6 +1,10 @@
 package org.dallyeo.matuabom.dto.Response.AI;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
+import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
 import java.time.OffsetDateTime;
 import lombok.Getter;
 import lombok.Setter;
@@ -11,33 +15,36 @@ import org.dallyeo.matuabom.dto.Response.InputCategory;
 public class AIScheduleResponseDTO {
 
     @JsonProperty("category")
-    InputCategory category;
+    private InputCategory category;
 
+    // category 필드의 값(이름)을 보고 Data의 구현체를 결정합니다.
     @JsonProperty("data")
-    Data data;
+    @JsonTypeInfo(use = Id.NAME, include = As.EXTERNAL_PROPERTY, property = "category")
+    @JsonSubTypes({
+        @JsonSubTypes.Type(value = GenerateSchedule.class, name = "일정생성"),
+        @JsonSubTypes.Type(value = SelectSchedule.class, name = "일정조회"),
 
-    @Getter
-    @Setter
-    public static class Data {
+    })
+    private Data data;
 
-        @JsonProperty("title")
+    public interface Data {}
+
+    // 카테고리가 일정생성인 경우
+    @Getter @Setter
+    public static class GenerateSchedule implements Data {
         private String title;
-
-        @JsonProperty("description")
         private String description;
-
-        @JsonProperty("start")
         private OffsetDateTime start;
-
-        @JsonProperty("end")
         private OffsetDateTime end;
-
-        @JsonProperty("allDay")
         private Boolean allDay;
-
-        @JsonProperty("timeZone")
         private String timeZone;
+    }
 
+    @Getter @Setter
+    public static class SelectSchedule implements Data {
+        private Long start;
+        private Long end;
+        private String keyword;
     }
 
 }
