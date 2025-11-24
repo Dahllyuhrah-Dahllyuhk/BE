@@ -56,4 +56,15 @@ public class FriendService {
         }
         return userRepository.findAllById(friendIds);
     }
+
+    @Transactional
+    public void deleteFriend(String currentUserId, String deleteTargetUserId) {
+        String userId1 = currentUserId.compareTo(deleteTargetUserId) < 0 ? currentUserId : deleteTargetUserId;
+        String userId2 = currentUserId.compareTo(deleteTargetUserId) < 0 ? deleteTargetUserId : currentUserId;
+
+        Friend relation = friendRepository.findByUserId1AndUserId2(userId1, userId2)
+                .orElseThrow(() -> new IllegalArgumentException("친구가 아닙니다."));
+
+        friendRepository.delete(relation);
+    }
 }
