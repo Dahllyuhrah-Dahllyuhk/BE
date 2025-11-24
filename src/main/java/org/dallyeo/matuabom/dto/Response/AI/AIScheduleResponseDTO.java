@@ -23,7 +23,7 @@ public class AIScheduleResponseDTO {
     @JsonSubTypes({
         @JsonSubTypes.Type(value = GenerateSchedule.class, name = "일정생성"),
         @JsonSubTypes.Type(value = SelectSchedule.class, name = "일정조회"),
-
+        @JsonSubTypes.Type(value = SelectSchedule.class, name = "일정삭제"),
     })
     private Data data;
 
@@ -34,8 +34,8 @@ public class AIScheduleResponseDTO {
     public static class GenerateSchedule implements Data {
         private String title;
         private String description;
-        private OffsetDateTime start;
-        private OffsetDateTime end;
+        private String start;
+        private String end;
         private Boolean allDay;
         private String timeZone;
     }

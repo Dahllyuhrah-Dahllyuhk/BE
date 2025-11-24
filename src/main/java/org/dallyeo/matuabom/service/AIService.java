@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
@@ -55,7 +56,7 @@ public class AIService {
 
         }
         if (Objects.requireNonNull(inputCategory) == InputCategory.일정삭제){
-
+            return deleteSchedule(response);
         }
         if (Objects.requireNonNull(inputCategory) == InputCategory.모임생성){
 
@@ -87,6 +88,17 @@ public class AIService {
         throw new IllegalArgumentException("일정 조회 요청 데이터가 아닙니다. category: " + response.getCategory());
     }
 
+    private List<CalendarEventDto> deleteSchedule(AIScheduleResponseDTO response)
+        throws GeneralSecurityException, IOException {
+        List<CalendarEventDto> calendarEventDtos = getSchedule(response);
+        for (CalendarEventDto calendarEventDto : calendarEventDtos) {
+            String id = calendarEventDto.getId();
+            calendarEventService.delete(id);
+        }
+        return calendarEventDtos;
+    }
+
+
     public CalendarEventDto generateSchedule(AIScheduleResponseDTO response)
         throws GeneralSecurityException, IOException {
 
@@ -100,8 +112,8 @@ public class AIService {
 
             // 🔥 [핵심 수정] ISO 문자열("2025-11-30T...")을 타임스탬프("1764...")로 변환
             // 이걸 안 하면 서비스가 파싱 에러를 내고 "오늘 날짜"로 저장해버립니다.
-            createEventReq.setStart(String.valueOf(data.getStart()));
-            createEventReq.setEnd(String.valueOf(data.getEnd()));
+            createEventReq.setStart(data.getStart());
+            createEventReq.setEnd(data.getEnd());
 
             // 색상 랜덤
             if (options != null && !options.isEmpty()) {
