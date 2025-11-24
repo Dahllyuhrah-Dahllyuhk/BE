@@ -523,14 +523,33 @@ public class GoogleCalendarService {
         String sIso, eIso;
 
         if (allDay) {
-            LocalDate s = looksLikeDateOnly(req.getStart())
-                    ? LocalDate.parse(req.getStart(), ISO_LOCAL_DATE)
-                    : LocalDate.now(zone);
+            LocalDate s;
+            try {
+                // 1. [수정] 먼저 AI가 보내주는 "긴 ISO 형식" 파싱을 시도합니다.
+                // "2025-11-30T00:00:00+09:00" -> 파싱 -> 날짜만 추출
+                s = ZonedDateTime.parse(req.getStart(), DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .withZoneSameInstant(zone)
+                    .toLocalDate();
+            } catch (Exception e) {
+                // 2. 파싱 실패 시, 기존 로직(짧은 날짜 확인)을 수행
+                s = looksLikeDateOnly(req.getStart())
+                    ? LocalDate.parse(req.getStart(), DateTimeFormatter.ISO_LOCAL_DATE)
+                    : LocalDate.now(zone); // 최후의 수단으로 오늘 날짜
+            }
 
-            LocalDate e = looksLikeDateOnly(req.getEnd())
-                    ? LocalDate.parse(req.getEnd(), ISO_LOCAL_DATE)
+            LocalDate e;
+            try {
+                // 종료일도 동일하게 처리
+                e = ZonedDateTime.parse(req.getEnd(), DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .withZoneSameInstant(zone)
+                    .toLocalDate();
+            } catch (Exception ex) {
+                e = looksLikeDateOnly(req.getEnd())
+                    ? LocalDate.parse(req.getEnd(), DateTimeFormatter.ISO_LOCAL_DATE)
                     : s.plusDays(1);
+            }
 
+            // 종료일이 시작일보다 앞서면 하루 뒤로 설정
             if (!e.isAfter(s)) e = s.plusDays(1);
 
             ZonedDateTime sz = s.atStartOfDay(zone);
