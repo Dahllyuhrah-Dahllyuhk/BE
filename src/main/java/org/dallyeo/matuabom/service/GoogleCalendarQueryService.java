@@ -14,13 +14,14 @@ public class GoogleCalendarQueryService {
     this.repository = repository;
   }
 
-  public List<CalendarEventDto> query(String userEmail, Long startTs, Long endTs) {
+  public List<CalendarEventDto> query(String userId, Long startTs, Long endTs) {
     if (startTs != null && endTs != null) {
-          // ✅ 변경: BETWEEN → OVERLAP
-          return repository.findByUserEmailAndStartTimestampLessThanAndEndTimestampGreaterThanOrderByStartTimestampAsc(
-              userEmail, endTs, startTs
+          // 🔥 FIX: findByUserEmailAnd... -> findByUserIdAnd...로 변경
+          return repository.findByUserIdAndStartTimestampLessThanAndEndTimestampGreaterThanOrderByStartTimestampAsc(
+              userId, endTs, startTs
           );
         }
-          return repository.findByUserEmailOrderByStartTimestampAsc(userEmail);
+          // 🔥 FIX: findByUserEmail... -> findByUserId...로 변경
+          return repository.findByUserIdOrderByStartTimestampAsc(userId);
       }
 }

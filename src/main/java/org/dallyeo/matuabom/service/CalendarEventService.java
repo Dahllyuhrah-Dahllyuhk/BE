@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
 import org.dallyeo.matuabom.repository.CalendarEventRepository;
-import org.dallyeo.matuabom.security.CustomPrincipal; // ✅ CustomPrincipal 임포트
+import org.dallyeo.matuabom.security.CustomPrincipal;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -24,13 +25,13 @@ public class CalendarEventService {
     private final GoogleCalendarQueryService googleCalendarQueryService;
     private final EventSseService eventSseService;
 
-    // 🔥 FIX: CustomPrincipal로 형변환하여 정확한 userId 추출
+    // CustomPrincipal로 형변환하여 정확한 userId 추출
     private String userId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth != null && auth.getPrincipal() instanceof CustomPrincipal) {
             CustomPrincipal principal = (CustomPrincipal) auth.getPrincipal();
-            return principal.getUserId(); // ✅ 정확한 String ID 반환 (예: "6918...")
+            return principal.getUserId(); // 정확한 String ID 반환 (예: "6918...")
         }
 
         // 혹시 모를 호환성 (Principal이 String인 경우)
@@ -51,6 +52,14 @@ public class CalendarEventService {
         return googleCalendarQueryService.query(uid, startTs, endTs);
     }
 
+    /**
+         * 특정 사용자 ID의 캘린더 이벤트를 조회합니다. (모임 추천 로직에서 사용)
+         */
+    public List<CalendarEventDto> getEventsByUserId(String uid, Long startTs, Long endTs) {
+        // 이미 해당 사용자의 데이터가 DB에 동기화되어 있다고 가정하고 쿼리 서비스를 호출합니다.
+        return googleCalendarQueryService.query(uid, startTs, endTs);
+    }
+
     private Long parseLongOrNull(String value) {
         if (value == null || value.isBlank()) return null;
         try {
@@ -66,7 +75,7 @@ public class CalendarEventService {
     public CalendarEventDto create(CreateEventReq req)
             throws GeneralSecurityException, IOException {
 
-        String uid = userId();
+        String uid = userId(); // 정확한 사용자 ID 확보
         CalendarEventDto saved;
 
         if (googleTokens.isLinked(uid)) {
@@ -79,7 +88,8 @@ public class CalendarEventService {
 
         } else {
             // [B. 연동 안 된 사용자]
-            saved = googleCalendarService.createLocalEvent(req);
+            // ✅ FIX: createLocalEvent에 uid를 전달
+            saved = googleCalendarService.createLocalEvent(uid, req);
         }
 
         eventSseService.sendEventsUpdated();
@@ -94,7 +104,8 @@ public class CalendarEventService {
 
         String uid = userId();
 
-        repository.findByIdAndUserEmail(eventId, uid)
+        // 🔥 FIX: findByIdAndUserEmail -> findByIdAndUserId로 변경
+        repository.findByIdAndUserId(eventId, uid)
                 .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
 
         CalendarEventDto updated;
@@ -109,7 +120,8 @@ public class CalendarEventService {
 
         } else {
             // [B. 연동 안 된 사용자]
-            updated = googleCalendarService.updateLocalEvent(eventId, req);
+            // ✅ FIX: updateLocalEvent에 uid를 전달
+            updated = googleCalendarService.updateLocalEvent(uid, eventId, req);
         }
 
         eventSseService.sendEventsUpdated();
@@ -123,7 +135,8 @@ public class CalendarEventService {
 
         String uid = userId();
 
-        repository.findByIdAndUserEmail(eventId, uid)
+        // 🔥 FIX: findByIdAndUserEmail -> findByIdAndUserId로 변경
+        repository.findByIdAndUserId(eventId, uid)
                 .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
 
         if (googleTokens.isLinked(uid)) {
@@ -136,7 +149,8 @@ public class CalendarEventService {
 
         } else {
             // [B. 연동 안 된 사용자]
-            googleCalendarService.deleteLocalEvent(eventId);
+            // ✅ FIX: deleteLocalEvent에 uid를 전달
+            googleCalendarService.deleteLocalEvent(uid, eventId);
         }
 
         eventSseService.sendEventsUpdated();
