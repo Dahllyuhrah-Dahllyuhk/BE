@@ -40,13 +40,18 @@ public class GoogleOAuthClientService {
         entity.setUserId(userId);
         entity.setGoogleEmail(googleEmail);
 
+        // 항상 최신 Access Token / 만료 시각 갱신
         entity.setAccessToken(client.getAccessToken().getTokenValue());
         entity.setAccessTokenExpiresAt(client.getAccessToken().getExpiresAt());
 
+        // ✅ RefreshToken이 새로 오면 갱신
         if (client.getRefreshToken() != null) {
             entity.setRefreshToken(client.getRefreshToken().getTokenValue());
             entity.setRefreshTokenIssuedAt(client.getRefreshToken().getIssuedAt());
         }
+        // ❗ 새로 안 왔는데, 기존에도 없으면 -> 여전히 null (최초 설정 잘못된 케이스)
+        //    이 경우는 사용자가 이번에 다시 로그인해도 refresh token이 안 왔다는 뜻이라,
+        //    OAuth Authorization 쪽 설정을 확인해야 함 (우리가 방금 SecurityConfig에서 해결함)
 
         entity.setScopes(client.getAccessToken().getScopes());
         entity.setUpdatedAt(Instant.now());
@@ -84,6 +89,8 @@ public class GoogleOAuthClientService {
         }
 
         if (entity.getRefreshToken() == null) {
+            // ❌ 이 경우는 DB에 refreshToken 자체가 없다는 뜻.
+            //    -> 사용자가 새 OAuth 동의(동기화)를 다시 해야 함.
             throw new IllegalStateException("No refresh token available");
         }
 

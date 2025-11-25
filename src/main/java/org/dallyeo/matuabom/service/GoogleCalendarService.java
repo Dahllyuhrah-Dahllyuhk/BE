@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 public class GoogleCalendarService {
 
     private final CalendarEventRepository repository;
-    /** 🔹 추가: 토큰 자동 갱신용 서비스 주입 */
+    // 🔹 토큰 자동 갱신용 서비스
     private final GoogleOAuthClientService googleOAuthClientService;
 
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarService.class);
@@ -68,7 +68,8 @@ public class GoogleCalendarService {
             // OffsetDateTime (e.g. 2025-11-24T10:00:00+09:00)
             try {
                 return OffsetDateTime.parse(t, ISO_OFFSET_DT).toInstant();
-            } catch (Exception ignore) { }
+            } catch (Exception ignore) {
+            }
 
             // Instant 형식
             return Instant.parse(t);
@@ -91,8 +92,8 @@ public class GoogleCalendarService {
 
     /**
      * ✅ Google Calendar 클라이언트 생성
-     *  - 항상 GoogleOAuthClientService 를 통해 "유효한 최신 AccessToken"을 가져와 사용
-     *  - 토큰 만료 시 여기서 자동 갱신 + DB 저장 (GoogleOAuthClientService 내부)
+     *  - GoogleOAuthClientService 를 통해 "유효한 최신 AccessToken"을 가져와 사용
+     *  - 토큰 만료 시 여기서 자동 갱신 + DB 저장
      */
     private Calendar buildCalendarClient(GoogleOAuthClientEntity tokens)
             throws GeneralSecurityException, IOException {
@@ -100,7 +101,7 @@ public class GoogleCalendarService {
         var http = GoogleNetHttpTransport.newTrustedTransport();
         var json = GsonFactory.getDefaultInstance();
 
-        // 🔹 항상 서비스에서 최신 토큰을 가져다 씀 (만료되었으면 이 안에서 갱신)
+        // 항상 유효한 액세스 토큰 확보 (만료 시 내부에서 refresh)
         String accessToken = googleOAuthClientService.refreshAccessTokenIfExpired(tokens.getUserId());
 
         logger.debug("Using Google access token for user {}: {}...",
@@ -487,7 +488,7 @@ public class GoogleCalendarService {
         } catch (GoogleJsonResponseException e) {
             int code = e.getStatusCode();
             if (code != 404 && code != 410) {
-                // 404/410은 이미 삭제된 상태이므로 무시
+                // 404/410은 이미 삭제된 상태이므로 무시, 나머지는 그대로 던짐
                 throw e;
             }
         }

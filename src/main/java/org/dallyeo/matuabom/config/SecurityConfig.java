@@ -26,6 +26,7 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
     @Value("${app.frontend-base-url:http://localhost:3000}")
     private String frontendBaseUrl;
 
@@ -35,86 +36,59 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
+        http
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
-
-                // ✅ JWT는 stateless지만, OAuth2 로그인은 세션이 필요해서 IF_REQUIRED
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                )
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
 
                 .authorizeHttpRequests(auth -> auth
-                        // preflight
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                        // docs & static
                         .requestMatchers(
                                 "/swagger", "/swagger-ui.html", "/swagger-ui/**",
                                 "/api-docs", "/api-docs/**", "/v3/api-docs/**",
                                 "/", "/error", "/favicon.ico",
                                 "/*.png", "/*.gif", "/*.svg", "/*.jpg", "/*.html", "/*.css", "/*.js"
                         ).permitAll()
-
-                        // oauth2 endpoints
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
-
-                        // protected API
                         .requestMatchers("/api/calendar/**","/api/auth/me","/api/friends/**").authenticated()
-
                         .anyRequest().permitAll()
                 )
 
-                // ✅ 인증 안 된 상태에서 /api/**로 들어오면
-                //    → 리다이렉트 하지 말고 JSON 401만 응답
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((req, res, e) -> {
-                            res.setStatus(401);
-                            res.setContentType("application/json;charset=UTF-8");
-                            res.getWriter().write("{\"error\":\"unauthorized\"}");
-                        })
-                )
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((req, res, e) -> {
+                    res.setStatus(401);
+                    res.setContentType("application/json;charset=UTF-8");
+                    res.getWriter().write("{\"error\":\"unauthorized\"}");
+                }))
 
                 .oauth2Login(oauth2 -> oauth2
-                        .userInfoEndpoint(userInfo -> userInfo
-                                .userService(oauth2UserRequest -> {
-                                    String registrationId = oauth2UserRequest.getClientRegistration().getRegistrationId();
-
-                                    if ("kakao".equalsIgnoreCase(registrationId)) {
-                                        return kakaoOAuth2UserService.loadUser(oauth2UserRequest);
-                                    }
-
-                                    // 구글은 기본 서비스 사용
-                                    return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
-                                })
-                        )
+                        .userInfoEndpoint(userInfo -> userInfo.userService(oauth2UserRequest -> {
+                            String registrationId = oauth2UserRequest.getClientRegistration().getRegistrationId();
+                            if ("kakao".equalsIgnoreCase(registrationId)) {
+                                return kakaoOAuth2UserService.loadUser(oauth2UserRequest);
+                            }
+                            return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
+                        }))
                         .successHandler(jwtLoginSuccessHandler)
                 )
-
                 .oauth2Client(Customizer.withDefaults())
+                .addFilterAfter(jwtAuthFilter, OAuth2LoginAuthenticationFilter.class);
 
-                .addFilterAfter(jwtAuthFilter, OAuth2LoginAuthenticationFilter.class)
-
-                .build();
+        return http.build();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        String origin = frontendBaseUrl;
-          if (origin.endsWith("/")) {
-              origin = origin.substring(0, origin.length() - 1);
-          }
-
-        config.setAllowedOrigins(List.of("http://localhost:3000", origin));
+        config.setAllowedOrigins(List.of("http://localhost:3000", frontendBaseUrl));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         config.setExposedHeaders(List.of("Set-Cookie"));
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
+
+        UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
+        src.registerCorsConfiguration("/**", config);
+        return src;
     }
 }
