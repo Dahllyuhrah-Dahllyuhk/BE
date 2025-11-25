@@ -41,6 +41,7 @@ public class GoogleCalendarService {
     private static final DateTimeFormatter ISO_LOCAL_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ISO_OFFSET_DT = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
     private static final Pattern DATE_ONLY_RE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
+    private final CalendarEventRepository calendarEventRepository;
 
     @Value("${app.backend-base-url:http://localhost:8080}")
     private String backendBaseUrl;
@@ -741,5 +742,12 @@ public class GoogleCalendarService {
         if (nextSyncToken != null && !nextSyncToken.isBlank()) {
             tokens.setSyncToken(nextSyncToken);
         }
+    }
+    /**
+     * 📍 모임 기반으로 생성한 이벤트에 meetingId를 세팅해서 다시 저장
+     */
+    public CalendarEventDto attachMeetingId(CalendarEventDto dto, String meetingId) {
+        dto.setMeetingId(meetingId);
+        return calendarEventRepository.save(dto);
     }
 }

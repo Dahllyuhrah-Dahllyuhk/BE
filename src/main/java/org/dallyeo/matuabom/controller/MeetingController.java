@@ -4,12 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.domain.meeting.AvailableSlot;
 import org.dallyeo.matuabom.domain.meeting.Meeting;
 import org.dallyeo.matuabom.domain.meeting.ParticipantTimeStatus;
-import org.dallyeo.matuabom.dto.meeting.DailyCountDto;
-import org.dallyeo.matuabom.dto.meeting.MeetingCreateRequest;
-import org.dallyeo.matuabom.dto.meeting.MeetingUpdateRequest;
-import org.dallyeo.matuabom.dto.meeting.ParticipantSettingsUpdateRequest;
+import org.dallyeo.matuabom.dto.meeting.*;
 // ✨ DTO 임포트 (새로 생성한 슬롯 기반 DTO)
-import org.dallyeo.matuabom.dto.meeting.AvailabilitySlotUpdateDto;
 
 import org.dallyeo.matuabom.security.CustomPrincipal;
 import org.dallyeo.matuabom.service.MeetingService;
@@ -162,6 +158,29 @@ public class MeetingController {
         Map<String, DailyCountDto> dailyCounts = meetingService.getDailyAvailability(meetingId);
         return ResponseEntity.ok(dailyCounts);
     }
+
+    /**
+         * 📍 모임 상태 변경 (PENDING / CONFIRMED / CLOSED)
+         * body 예:
+         * {
+         *   "status": "CONFIRMED",
+         *   "confirmedStart": "2025-12-01T18:00:00+09:00",
+         *   "confirmedEnd": "2025-12-01T20:00:00+09:00"
+         * }
+         */
+        @PatchMapping("/{meetingId}/state")
+        public ResponseEntity<Meeting> updateMeetingState(
+                @PathVariable String meetingId,
+                @AuthenticationPrincipal CustomPrincipal principal,
+                @Valid @RequestBody MeetingStatusUpdateRequest request
+        ) {
+            Meeting updated = meetingService.updateMeetingStatus(
+                    principal.getUserId(),
+                    meetingId,
+                    request
+            );
+            return ResponseEntity.ok(updated);
+        }
 
     // NOTE: deleteMeeting 함수에 return이 없어서 void로 변경했습니다. (위에서 수정됨)
 }
