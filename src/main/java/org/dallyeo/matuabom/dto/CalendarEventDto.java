@@ -14,7 +14,7 @@ public class CalendarEventDto {
     @Id
     private String id;          // Google Calendar event ID
 
-    private String userId;   // 이벤트 주인의 이메일 (여러 사용자 지원 대비)
+    private String userId;   //
 
     private String title;       // summary
     private String start;       // ISO-8601 날짜/시간 (string)
@@ -27,4 +27,6 @@ public class CalendarEventDto {
     private String timeZone;    // Asia/Seoul
 
     private String color;
+
+    private String meetingId;
 }

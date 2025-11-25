@@ -34,4 +34,7 @@ public interface CalendarEventRepository extends MongoRepository<CalendarEventDt
     /** 업데이트/삭제 시 소유자 검증용 */
     // 🔥 FIX: userEmail -> userId로 변경
     Optional<CalendarEventDto> findByIdAndUserId(String id, String userId);
+
+    List<CalendarEventDto> findByMeetingId(String meetingId);
+        void deleteByMeetingId(String meetingId);
 }

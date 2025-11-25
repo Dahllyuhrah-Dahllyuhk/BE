@@ -20,7 +20,16 @@ public class Meeting {
     private String id;
     private String hostUserId;
     private String name;
-    private String status; // OPEN, CLOSED, VOTING 등
+    /**
+         * 상태:
+         * - PENDING   : 투표/조율 중
+         * - CONFIRMED : 확정 완료
+         * - CLOSED    : 종료/마감
+         */
+    private String status;
+
+    private Instant confirmedStart;
+    private Instant confirmedEnd;
 
     private MeetingRequirement requirement;
     private List<MeetingParticipant> participants; // 참여자 목록

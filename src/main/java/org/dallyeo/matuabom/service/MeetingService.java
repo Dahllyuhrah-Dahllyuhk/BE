@@ -1,21 +1,25 @@
 package org.dallyeo.matuabom.service;
 
 import lombok.RequiredArgsConstructor;
+import org.dallyeo.matuabom.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.domain.User;
 import org.dallyeo.matuabom.domain.meeting.*;
-import org.dallyeo.matuabom.dto.meeting.DailyCountDto;
-import org.dallyeo.matuabom.dto.meeting.MeetingCreateRequest;
-import org.dallyeo.matuabom.dto.meeting.MeetingUpdateRequest;
-import org.dallyeo.matuabom.dto.meeting.AvailabilitySlotUpdateDto;
-import org.dallyeo.matuabom.dto.meeting.MeetingRequirementDto;
+import org.dallyeo.matuabom.domain.meeting.ParticipantTimeStatus;
+import org.dallyeo.matuabom.dto.CalendarEventDto;
+import org.dallyeo.matuabom.dto.CreateEventReq;
+import org.dallyeo.matuabom.dto.meeting.*;
+import org.dallyeo.matuabom.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.repository.MeetingRepository;
 import org.dallyeo.matuabom.repository.UserRepository;
 import org.dallyeo.matuabom.service.meeting.AvailableTimeCalculator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,6 +30,10 @@ public class MeetingService {
     private final MeetingRepository meetingRepository;
     private final UserRepository userRepository;
     private final AvailableTimeCalculator availableTimeCalculator;
+
+    private final GoogleOAuthClientService googleOAuthClientService;
+        private final GoogleCalendarService googleCalendarService;
+        private final CalendarEventRepository calendarEventRepository;
 
     private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -61,7 +69,7 @@ public class MeetingService {
         Meeting meeting = Meeting.builder()
                 .hostUserId(hostUserId)
                 .name(request.getName())
-                .status("OPEN")
+                .status("PENDING")
                 .requirement(requirement)
                 .participants(participants)
                 .build();
@@ -412,4 +420,115 @@ public class MeetingService {
                 .timeConstraints(constraints)
                 .build();
     }
+
+    @Transactional
+        public Meeting updateMeetingStatus(
+                String hostUserId,
+                String meetingId,
+                MeetingStatusUpdateRequest request
+        ) {
+            Meeting meeting = findById(meetingId);
+
+            if (!meeting.getHostUserId().equals(hostUserId)) {
+                throw new SecurityException("Only the host can change meeting status.");
+            }
+
+            String newStatus = request.getStatus();
+            if (newStatus == null ||
+                    !(newStatus.equals("PENDING")
+                            || newStatus.equals("CONFIRMED")
+                            || newStatus.equals("CLOSED"))) {
+                throw new IllegalArgumentException("Invalid status: " + newStatus);
+            }
+
+            String oldStatus = meeting.getStatus();
+
+            // CONFIRMED일 때는 시간 필수
+            if ("CONFIRMED".equals(newStatus)) {
+                if (request.getConfirmedStart() == null || request.getConfirmedEnd() == null) {
+                    throw new IllegalArgumentException("confirmedStart / confirmedEnd is required when status=CONFIRMED");
+                }
+                try {
+                    Instant start = OffsetDateTime.parse(request.getConfirmedStart()).toInstant();
+                    Instant end = OffsetDateTime.parse(request.getConfirmedEnd()).toInstant();
+                    if (!end.isAfter(start)) {
+                        throw new IllegalArgumentException("confirmedEnd must be after confirmedStart");
+                    }
+                    meeting.setConfirmedStart(start);
+                    meeting.setConfirmedEnd(end);
+
+                } catch (DateTimeParseException e) {
+                    throw new IllegalArgumentException("Invalid date format for confirmedStart/confirmedEnd", e);
+                }
+
+                // 📍 처음으로 CONFIRMED 되는 경우에만 이벤트 생성
+                if (!"CONFIRMED".equals(oldStatus)) {
+                    createConfirmedEventsForParticipants(meeting);
+                }
+
+            } else {
+                // PENDING / CLOSED로 돌아가면 확정 시간 정보 제거
+                meeting.setConfirmedStart(null);
+                meeting.setConfirmedEnd(null);
+
+                // 필요하다면: 과거에 생성된 meetingId 기반 calendar_events 삭제 가능
+                // calendarEventRepository.deleteByMeetingId(meetingId);
+            }
+
+            meeting.setStatus(newStatus);
+            return meetingRepository.save(meeting);
+        }
+
+        /**
+         * 📍 모임이 CONFIRMED 되었을 때, 각 참가자의 calendar_events에 일정 하나씩 생성
+         */
+        private void createConfirmedEventsForParticipants(Meeting meeting) {
+            Instant start = meeting.getConfirmedStart();
+            Instant end = meeting.getConfirmedEnd();
+            if (start == null || end == null) return;
+
+            // 사람이 읽을 수 있는 ISO-8601 문자열 (Offset 포함, Asia/Seoul 기준)
+            String startStr = start.atZone(ZONE_SEOUL).toOffsetDateTime().toString();
+            String endStr = end.atZone(ZONE_SEOUL).toOffsetDateTime().toString();
+
+            for (MeetingParticipant participant : meeting.getParticipants()) {
+                // ACCEPTED 된 사람만 일정 생성
+                if (!"ACCEPTED".equals(participant.getStatus())) continue;
+
+                String uid = participant.getUserId();
+
+                // 이벤트 요청 바디 생성
+                CreateEventReq req = new CreateEventReq();
+                req.setTitle(meeting.getName());           // 📍 요청했던 것: 모임 이름 그대로 제목
+                req.setDescription(null);                  // 필요하면 "모임 확정 일정" 등 추가 가능
+                req.setStart(startStr);
+                req.setEnd(endStr);
+                req.setAllDay(false);                      // 현재는 시간 단위 확정만 가정
+                req.setTimeZone(ZONE_SEOUL.getId());
+                req.setColor(null);                        // 색상 직접 안 주면 FE에서 처리
+
+                try {
+                    if (googleOAuthClientService.isLinked(uid)) {
+                        // 구글 연동된 참가자 → 구글 + Mongo에 저장
+                        GoogleOAuthClientEntity tokens = googleOAuthClientService
+                                .getTokens(uid)
+                                .orElseThrow(() -> new IllegalStateException("Google token not found for user: " + uid));
+
+                        CalendarEventDto dto =
+                                googleCalendarService.createGoogleEvent(tokens, uid, req);
+                        googleCalendarService.attachMeetingId(dto, meeting.getId());
+
+                    } else {
+                        // 연동 안 된 참가자 → 로컬 Mongo에만 저장
+                        CalendarEventDto dto =
+                                googleCalendarService.createLocalEvent(uid, req);
+                        googleCalendarService.attachMeetingId(dto, meeting.getId());
+                    }
+                } catch (GeneralSecurityException | IOException e) {
+                    // 캘린더 연동 실패하더라도 모임 상태 저장은 진행
+                    // 필요하면 로그만 찍고 계속
+                    throw new IllegalStateException("Failed to create calendar event for user " + uid, e);
+                }
+            }
+        }
 }
