@@ -5,14 +5,15 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.Id;
-import java.time.OffsetDateTime;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 import org.dallyeo.matuabom.dto.Response.InputCategory;
+import org.dallyeo.matuabom.dto.meeting.TimeRangeDto;
 
 @Getter
 @Setter
-public class AIScheduleResponseDTO {
+public class AIResponseDTO {
 
     @JsonProperty("category")
     private InputCategory category;
@@ -24,6 +25,7 @@ public class AIScheduleResponseDTO {
         @JsonSubTypes.Type(value = GenerateSchedule.class, name = "일정생성"),
         @JsonSubTypes.Type(value = SelectSchedule.class, name = "일정조회"),
         @JsonSubTypes.Type(value = SelectSchedule.class, name = "일정삭제"),
+        @JsonSubTypes.Type(value = GenerateMeeting.class, name = "모임생성"),
     })
     private Data data;
 
@@ -45,6 +47,18 @@ public class AIScheduleResponseDTO {
         private Long start;
         private Long end;
         private String keyword;
+    }
+
+    // 카테고리가 모임생성
+    @Getter
+    @Setter
+    public static class GenerateMeeting implements Data {
+        private String title;
+        private String dateRangeStart; // yyyy-MM-dd
+        private String dateRangeEnd;   // yyyy-MM-dd
+        private Boolean isAllDay;
+        // 💡 시간 제약 (isAllDay가 false일 때만 사용)
+        private List<TimeRangeDto> timeConstraints;
     }
 
 }
