@@ -109,7 +109,7 @@ public class SecurityConfig {
               origin = origin.substring(0, origin.length() - 1);
           }
 
-        config.setAllowedOrigins(List.of("http://localhost:3000", origin));
+        config.setAllowedOrigins(List.of("http://localhost:3000", "http://localhost:5000", origin));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         config.setExposedHeaders(List.of("Set-Cookie"));
