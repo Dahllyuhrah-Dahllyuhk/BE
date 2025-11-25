@@ -30,6 +30,7 @@ public class TimetableController {
         );
     }
 
+    //시간표 수정
     @PutMapping("/{timetableId}")
         public ResponseEntity<Timetable> updateTimetable(
                 @AuthenticationPrincipal CustomPrincipal principal,
@@ -44,6 +45,15 @@ public class TimetableController {
                 )
             );
         }
+    //시간표 삭제
+    @DeleteMapping("/{timetableId}")
+    public ResponseEntity<Void> deleteTimetable(
+            @AuthenticationPrincipal CustomPrincipal principal,
+            @PathVariable String timetableId
+    ) {
+        timetableService.deleteTimetable(principal.getUserId(), timetableId);
+        return ResponseEntity.noContent().build();
+    }
 
     // 수업 추가 (POST /api/timetables/{id}/items)
     @PostMapping("/{timetableId}/items")

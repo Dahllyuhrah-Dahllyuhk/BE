@@ -165,10 +165,25 @@ public class TimetableService {
     public Timetable updateTimetableName(String userId, String timetableId, String newName) {
         Timetable timetable = getTimetable(userId, timetableId);
 
+        if (!timetable.getUserId().equals(userId)) {
+                    throw new IllegalStateException("권한이 없습니다.");
+                }
         // 이름 변경
         timetable.setName(newName);
 
         return timetableRepository.save(timetable);
+    }
+
+    @Transactional
+    public void deleteTimetable(String userId, String timetableId) {
+        Timetable timetable = timetableRepository.findById(timetableId)
+                .orElseThrow(() -> new IllegalArgumentException("시간표를 찾을 수 없습니다."));
+
+        if (!timetable.getUserId().equals(userId)) {
+            throw new IllegalStateException("권한이 없습니다.");
+        }
+
+        timetableRepository.delete(timetable);
     }
 
     // (유틸 메서드 timeToMinutes)

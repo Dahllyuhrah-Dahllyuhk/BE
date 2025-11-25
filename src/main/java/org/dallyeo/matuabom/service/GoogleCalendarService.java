@@ -32,6 +32,9 @@ import java.util.stream.Collectors;
 public class GoogleCalendarService {
 
     private final CalendarEventRepository repository;
+    /** 🔹 추가: 토큰 자동 갱신용 서비스 주입 */
+    private final GoogleOAuthClientService googleOAuthClientService;
+
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarService.class);
 
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
@@ -86,17 +89,30 @@ public class GoogleCalendarService {
         return auth.getName();
     }
 
-    /** Google Calendar 클라이언트 생성 */
+    /**
+     * ✅ Google Calendar 클라이언트 생성
+     *  - 항상 GoogleOAuthClientService 를 통해 "유효한 최신 AccessToken"을 가져와 사용
+     *  - 토큰 만료 시 여기서 자동 갱신 + DB 저장 (GoogleOAuthClientService 내부)
+     */
     private Calendar buildCalendarClient(GoogleOAuthClientEntity tokens)
             throws GeneralSecurityException, IOException {
 
         var http = GoogleNetHttpTransport.newTrustedTransport();
         var json = GsonFactory.getDefaultInstance();
 
+        // 🔹 항상 서비스에서 최신 토큰을 가져다 씀 (만료되었으면 이 안에서 갱신)
+        String accessToken = googleOAuthClientService.refreshAccessTokenIfExpired(tokens.getUserId());
+
+        logger.debug("Using Google access token for user {}: {}...",
+                tokens.getUserId(),
+                accessToken != null && accessToken.length() > 10
+                        ? accessToken.substring(0, 10)
+                        : "null");
+
         return new Calendar.Builder(
                 http,
                 json,
-                req -> req.getHeaders().setAuthorization("Bearer " + tokens.getAccessToken())
+                req -> req.getHeaders().setAuthorization("Bearer " + accessToken)
         ).setApplicationName("Matuabom Calendar Integration").build();
     }
 
@@ -129,8 +145,9 @@ public class GoogleCalendarService {
                 tokens.setWatchExpiresAt(Instant.ofEpochMilli(created.getExpiration()));
             }
         } catch (GoogleJsonResponseException e) {
-            // 로컬 HTTP 환경에서는 여기서 400 날 수 있음 → 경고만 찍고 무시
-            logger.warn("Google Watch registration failed: {}", e.getMessage());
+            // 로컬 HTTP 환경에서는 여기서 400 / 401 날 수 있음 → 경고만 찍고 무시
+            logger.warn("Google Watch registration failed (status={}): {}",
+                    e.getStatusCode(), e.getDetails() != null ? e.getDetails().toString() : e.getMessage());
         }
     }
 
