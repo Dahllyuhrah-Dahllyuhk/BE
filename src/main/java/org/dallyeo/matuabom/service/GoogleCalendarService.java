@@ -5,7 +5,14 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
 import com.google.api.services.calendar.Calendar;
+
+import com.google.api.services.calendar.model.Event;
+import com.google.api.services.calendar.model.EventDateTime;
+import com.google.api.services.calendar.model.Events;
+import com.google.api.services.calendar.model.Channel;
+import java.time.format.DateTimeParseException;
 import com.google.api.services.calendar.model.*;
+
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
@@ -199,55 +206,64 @@ public class GoogleCalendarService {
        ============================== */
 
     private Event buildGoogleEvent(CreateEventReq req, ZoneId zone) {
+        // 1. 기본 정보 설정 (Location 제거함)
+        Event event = new Event()
+            .setSummary(req.getTitle())
+            .setDescription(req.getDescription());
 
-        String title = (req.getTitle() == null || req.getTitle().isBlank())
-                ? "(제목없음)"
-                : req.getTitle();
+        EventDateTime start = new EventDateTime();
+        EventDateTime end = new EventDateTime();
 
-        String tzId = (req.getTimeZone() != null && !req.getTimeZone().isBlank())
-                ? req.getTimeZone()
-                : zone.getId();
+        // 2. [핵심] All Day 날짜 파싱 로직 (여기가 버그 수정 포인트!)
+        if (Boolean.TRUE.equals(req.getAllDay())) {
+            LocalDate sDate;
+            try {
+                // [1순위] AI가 주는 긴 ISO 포맷 (2025-11-29T...) 파싱 시도
+                sDate = OffsetDateTime.parse(req.getStart(), DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toLocalDate();
+            } catch (Exception e) {
+                // [2순위] 실패하면 기존의 짧은 날짜 포맷 시도
+                try {
+                    sDate = LocalDate.parse(req.getStart(), DateTimeFormatter.ISO_LOCAL_DATE);
+                } catch (Exception ex) {
+                    // [3순위] 진짜 다 안되면 오늘 날짜 (안전장치)
+                    sDate = LocalDate.now(zone);
+                }
+            }
 
-        boolean allDay = Boolean.TRUE.equals(req.getAllDay()) ||
-                looksLikeDateOnly(req.getStart());
+            LocalDate eDate;
+            try {
+                // 종료일도 똑같이 처리
+                eDate = OffsetDateTime.parse(req.getEnd(), DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toLocalDate();
+            } catch (Exception e) {
+                try {
+                    eDate = LocalDate.parse(req.getEnd(), DateTimeFormatter.ISO_LOCAL_DATE);
+                } catch (Exception ex) {
+                    eDate = sDate.plusDays(1);
+                }
+            }
 
-        Event ev = new Event().setSummary(title);
+            // 날짜 역전 방지
+            if (!eDate.isAfter(sDate)) eDate = sDate.plusDays(1);
 
-        if (req.getDescription() != null) {
-            ev.setDescription(req.getDescription());
-        }
-
-        if (allDay) {
-            LocalDate s = (req.getStart() != null && looksLikeDateOnly(req.getStart()))
-                    ? LocalDate.parse(req.getStart(), ISO_LOCAL_DATE)
-                    : LocalDate.now(zone);
-
-            LocalDate e = (req.getEnd() != null && looksLikeDateOnly(req.getEnd()))
-                    ? LocalDate.parse(req.getEnd(), ISO_LOCAL_DATE)
-                    : s.plusDays(1);
-
-            if (!e.isAfter(s)) e = s.plusDays(1);
-
-            ev.setStart(new EventDateTime().setDate(new DateTime(s.toString())));
-            ev.setEnd(new EventDateTime().setDate(new DateTime(e.toString())));
+            // 구글은 종일 일정일 때 setDate 사용 (String "yyyy-MM-dd")
+            start.setDate(new DateTime(sDate.toString()));
+            end.setDate(new DateTime(eDate.toString()));
 
         } else {
-            Instant s = parseDate(req.getStart(), zone);
-            Instant e = parseDate(req.getEnd(), zone);
+            // [시간 일정] AI가 준 ISO 문자열을 구글 DateTime 객체가 바로 인식함
+            start.setDateTime(new DateTime(req.getStart()));
+            start.setTimeZone(zone.getId());
 
-            if (s == null) s = Instant.now();
-            if (e == null || !e.isAfter(s)) e = s.plus(Duration.ofHours(1));
-
-            ev.setStart(new EventDateTime()
-                    .setDateTime(new DateTime(s.toEpochMilli()))
-                    .setTimeZone(tzId));
-
-            ev.setEnd(new EventDateTime()
-                    .setDateTime(new DateTime(e.toEpochMilli()))
-                    .setTimeZone(tzId));
+            end.setDateTime(new DateTime(req.getEnd()));
+            end.setTimeZone(zone.getId());
         }
 
-        return ev;
+        event.setStart(start);
+        event.setEnd(end);
+
+        return event;
     }
 
     /* ============================================================
@@ -520,14 +536,61 @@ public class GoogleCalendarService {
         String eIso;
 
         if (allDay) {
-            LocalDate s = looksLikeDateOnly(req.getStart())
-                    ? LocalDate.parse(req.getStart(), ISO_LOCAL_DATE)
-                    : LocalDate.now(zone);
+            System.out.println("====== [DEBUG] allDay 로직 시작 ======");
+            System.out.println("입력된 Start 값: " + req.getStart());
+            System.out.println("입력된 End 값:   " + req.getEnd());
 
-            LocalDate e = looksLikeDateOnly(req.getEnd())
-                    ? LocalDate.parse(req.getEnd(), ISO_LOCAL_DATE)
-                    : s.plusDays(1);
+            LocalDate s;
+            try {
+                // 1. 공백 제거 (혹시 모를 공백 때문일 수 있음)
+                String startStr = req.getStart().trim();
 
+                // 2. AI가 주는 ISO 포맷 (2025-11-29T00:00:00+09:00) 파싱 시도
+                // ISO_DATE_TIME은 Offset이 있든 없든 웬만하면 다 받아줍니다.
+                s = OffsetDateTime.parse(startStr, DateTimeFormatter.ISO_DATE_TIME).toLocalDate();
+                System.out.println(">>> [성공] ISO 파싱 성공: " + s);
+
+            } catch (Exception e1) {
+                System.err.println(">>> [실패] 1차 ISO 파싱 실패: " + e1.getMessage());
+
+                // 3. 실패 시 타임스탬프(숫자)인지 확인
+                try {
+                    long millis = Long.parseLong(req.getStart().trim());
+                    s = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate();
+                    System.out.println(">>> [성공] 타임스탬프 파싱 성공: " + s);
+                } catch (Exception e2) {
+                    System.err.println(">>> [실패] 2차 타임스탬프 실패: " + e2.getMessage());
+
+                    // 4. 실패 시 짧은 날짜(2025-11-29)인지 확인
+                    try {
+                        s = LocalDate.parse(req.getStart().trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+                        System.out.println(">>> [성공] LocalDate 파싱 성공: " + s);
+                    } catch (Exception e3) {
+                        System.err.println(">>> [최종 실패] 모든 파싱 실패. 오늘 날짜로 설정합니다.");
+                        s = LocalDate.now(zone);
+                    }
+                }
+            }
+
+            // 종료일(e) 처리 - 시작일(s)과 같은 로직 적용
+            LocalDate e;
+            try {
+                String endStr = req.getEnd().trim();
+                e = OffsetDateTime.parse(endStr, DateTimeFormatter.ISO_DATE_TIME).toLocalDate();
+            } catch (Exception e1) {
+                try {
+                    long millis = Long.parseLong(req.getEnd().trim());
+                    e = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate();
+                } catch (Exception e2) {
+                    try {
+                        e = LocalDate.parse(req.getEnd().trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+                    } catch (Exception e3) {
+                        e = s.plusDays(1); // 실패 시 시작일 다음날
+                    }
+                }
+            }
+
+            // 날짜 역전 방지
             if (!e.isAfter(s)) e = s.plusDays(1);
 
             ZonedDateTime sz = s.atStartOfDay(zone);

@@ -82,7 +82,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of("http://localhost:3000", frontendBaseUrl));
+        config.setAllowedOrigins(List.of("http://localhost:3000","http://localhost:5000", frontendBaseUrl));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept"));
         config.setExposedHeaders(List.of("Set-Cookie"));

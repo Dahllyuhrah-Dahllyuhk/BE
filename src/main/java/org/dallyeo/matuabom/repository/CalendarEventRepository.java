@@ -5,6 +5,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.mongodb.repository.Query;
 
 public interface CalendarEventRepository extends MongoRepository<CalendarEventDto, String> {
 
@@ -34,6 +35,10 @@ public interface CalendarEventRepository extends MongoRepository<CalendarEventDt
     /** 업데이트/삭제 시 소유자 검증용 */
     // 🔥 FIX: userEmail -> userId로 변경
     Optional<CalendarEventDto> findByIdAndUserId(String id, String userId);
+  
+    // 조건: userId 일치 + title(제목) 검색 + 기간 겹침
+    @Query("{ 'userId': ?0, 'title': { $regex: ?1, $options: 'i' }, 'startTimestamp': { $lt: ?2 }, 'endTimestamp': { $gt: ?3 } }")
+    List<CalendarEventDto> findByUserIdAndTitleRegex(String userId, String keyword, Long viewEnd, Long viewStart);
 
     List<CalendarEventDto> findByMeetingId(String meetingId);
         void deleteByMeetingId(String meetingId);
