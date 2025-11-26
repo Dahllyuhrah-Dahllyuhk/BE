@@ -28,9 +28,6 @@ public class GoogleOAuthClientService {
     @Value("${spring.security.oauth2.client.registration.google.client-secret}")
     private String clientSecret;
 
-    /**
-     * 구글 로그인 성공 시 Access/Refresh Token 전체 저장
-     */
     public void saveTokens(String userId, String googleEmail, OAuth2AuthorizedClient client) {
 
         GoogleOAuthClientEntity entity = repo.findByUserId(userId)
@@ -40,18 +37,13 @@ public class GoogleOAuthClientService {
         entity.setUserId(userId);
         entity.setGoogleEmail(googleEmail);
 
-        // 항상 최신 Access Token / 만료 시각 갱신
         entity.setAccessToken(client.getAccessToken().getTokenValue());
         entity.setAccessTokenExpiresAt(client.getAccessToken().getExpiresAt());
 
-        // ✅ RefreshToken이 새로 오면 갱신
         if (client.getRefreshToken() != null) {
             entity.setRefreshToken(client.getRefreshToken().getTokenValue());
             entity.setRefreshTokenIssuedAt(client.getRefreshToken().getIssuedAt());
         }
-        // ❗ 새로 안 왔는데, 기존에도 없으면 -> 여전히 null (최초 설정 잘못된 케이스)
-        //    이 경우는 사용자가 이번에 다시 로그인해도 refresh token이 안 왔다는 뜻이라,
-        //    OAuth Authorization 쪽 설정을 확인해야 함 (우리가 방금 SecurityConfig에서 해결함)
 
         entity.setScopes(client.getAccessToken().getScopes());
         entity.setUpdatedAt(Instant.now());
@@ -82,32 +74,45 @@ public class GoogleOAuthClientService {
         GoogleOAuthClientEntity entity = repo.findByUserId(userId)
                 .orElseThrow(() -> new IllegalStateException("Google account not linked"));
 
-        // 아직 유효하면 그대로 반환
+        Instant now = Instant.now();
+
+        // 아직 유효한 토큰이면 그대로 사용
         if (entity.getAccessTokenExpiresAt() != null &&
-                entity.getAccessTokenExpiresAt().isAfter(Instant.now().plusSeconds(60))) {
+                entity.getAccessTokenExpiresAt().isAfter(now.plusSeconds(60))) {
             return entity.getAccessToken();
         }
 
         if (entity.getRefreshToken() == null) {
-            // ❌ 이 경우는 DB에 refreshToken 자체가 없다는 뜻.
-            //    -> 사용자가 새 OAuth 동의(동기화)를 다시 해야 함.
-            throw new IllegalStateException("No refresh token available");
+            // refresh token 자체가 없으면 사용자가 다시 연동해야 함
+            throw new IllegalStateException("NO_REFRESH_TOKEN");
         }
 
-        // 🔁 토큰 갱신 요청
-        GoogleTokenResponse response = new GoogleRefreshTokenRequest(
-                new NetHttpTransport(),
-                JacksonFactory.getDefaultInstance(),
-                entity.getRefreshToken(),
-                clientId,
-                clientSecret
-        ).execute();
+        GoogleTokenResponse response;
+        try {
+            response = new GoogleRefreshTokenRequest(
+                    new NetHttpTransport(),
+                    JacksonFactory.getDefaultInstance(),
+                    entity.getRefreshToken(),
+                    clientId,
+                    clientSecret
+            ).execute();
+        } catch (Exception e) {
+            // invalid_grant 등: refresh 토큰이 죽은 상태
+            throw new IllegalStateException("GOOGLE_REFRESH_FAILED", e);
+        }
 
         entity.setAccessToken(response.getAccessToken());
-        entity.setAccessTokenExpiresAt(
-                Instant.now().plusSeconds(response.getExpiresInSeconds())
-        );
-        entity.setUpdatedAt(Instant.now());
+        if (response.getExpiresInSeconds() != null) {
+            entity.setAccessTokenExpiresAt(
+                    now.plusSeconds(response.getExpiresInSeconds())
+            );
+        } else {
+            // 만약 값을 안 주면 1시간 기본값
+            entity.setAccessTokenExpiresAt(
+                    now.plusSeconds(3600)
+            );
+        }
+        entity.setUpdatedAt(now);
 
         repo.save(entity);
         return entity.getAccessToken();

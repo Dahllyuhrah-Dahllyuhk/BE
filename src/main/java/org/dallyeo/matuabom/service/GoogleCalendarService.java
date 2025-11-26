@@ -5,14 +5,7 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
 import com.google.api.services.calendar.Calendar;
-
-import com.google.api.services.calendar.model.Event;
-import com.google.api.services.calendar.model.EventDateTime;
-import com.google.api.services.calendar.model.Events;
-import com.google.api.services.calendar.model.Channel;
-import java.time.format.DateTimeParseException;
 import com.google.api.services.calendar.model.*;
-
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
@@ -39,7 +32,6 @@ import java.util.stream.Collectors;
 public class GoogleCalendarService {
 
     private final CalendarEventRepository repository;
-    // 🔹 토큰 자동 갱신용 서비스
     private final GoogleOAuthClientService googleOAuthClientService;
 
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarService.class);
@@ -48,7 +40,6 @@ public class GoogleCalendarService {
     private static final DateTimeFormatter ISO_LOCAL_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final DateTimeFormatter ISO_OFFSET_DT = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
     private static final Pattern DATE_ONLY_RE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$");
-    private final CalendarEventRepository calendarEventRepository;
 
     @Value("${app.backend-base-url:http://localhost:8080}")
     private String backendBaseUrl;
@@ -67,19 +58,16 @@ public class GoogleCalendarService {
         String t = s.trim();
 
         try {
-            // yyyy-MM-dd 형식 → 해당 날짜 00시
             if (looksLikeDateOnly(t)) {
                 LocalDate ld = LocalDate.parse(t, ISO_LOCAL_DATE);
                 return ld.atStartOfDay(zone).toInstant();
             }
 
-            // OffsetDateTime (e.g. 2025-11-24T10:00:00+09:00)
             try {
                 return OffsetDateTime.parse(t, ISO_OFFSET_DT).toInstant();
             } catch (Exception ignore) {
             }
 
-            // Instant 형식
             return Instant.parse(t);
 
         } catch (Exception e) {
@@ -109,7 +97,7 @@ public class GoogleCalendarService {
         var http = GoogleNetHttpTransport.newTrustedTransport();
         var json = GsonFactory.getDefaultInstance();
 
-        // 항상 유효한 액세스 토큰 확보 (만료 시 내부에서 refresh)
+        // 항상 유효한 액세스 토큰 확보 (만료 시 refresh)
         String accessToken = googleOAuthClientService.refreshAccessTokenIfExpired(tokens.getUserId());
 
         logger.debug("Using Google access token for user {}: {}...",
@@ -153,8 +141,11 @@ public class GoogleCalendarService {
             if (created.getExpiration() != null) {
                 tokens.setWatchExpiresAt(Instant.ofEpochMilli(created.getExpiration()));
             }
+
+            // 🔥 변경된 watch 정보 저장
+            googleOAuthClientService.save(tokens);
+
         } catch (GoogleJsonResponseException e) {
-            // 로컬 HTTP 환경에서는 여기서 400 / 401 날 수 있음 → 경고만 찍고 무시
             logger.warn("Google Watch registration failed (status={}): {}",
                     e.getStatusCode(), e.getDetails() != null ? e.getDetails().toString() : e.getMessage());
         }
@@ -188,7 +179,7 @@ public class GoogleCalendarService {
         }
 
         return CalendarEventDto.builder()
-                .id(event.getId())          // Google Event ID 그대로 사용
+                .id(event.getId())
                 .userId(userKey)
                 .title(event.getSummary())
                 .description(event.getDescription())
@@ -206,68 +197,59 @@ public class GoogleCalendarService {
        ============================== */
 
     private Event buildGoogleEvent(CreateEventReq req, ZoneId zone) {
-        // 1. 기본 정보 설정 (Location 제거함)
-        Event event = new Event()
-            .setSummary(req.getTitle())
-            .setDescription(req.getDescription());
 
-        EventDateTime start = new EventDateTime();
-        EventDateTime end = new EventDateTime();
+        String title = (req.getTitle() == null || req.getTitle().isBlank())
+                ? "(제목없음)"
+                : req.getTitle();
 
-        // 2. [핵심] All Day 날짜 파싱 로직 (여기가 버그 수정 포인트!)
-        if (Boolean.TRUE.equals(req.getAllDay())) {
-            LocalDate sDate;
-            try {
-                // [1순위] AI가 주는 긴 ISO 포맷 (2025-11-29T...) 파싱 시도
-                sDate = OffsetDateTime.parse(req.getStart(), DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-                    .toLocalDate();
-            } catch (Exception e) {
-                // [2순위] 실패하면 기존의 짧은 날짜 포맷 시도
-                try {
-                    sDate = LocalDate.parse(req.getStart(), DateTimeFormatter.ISO_LOCAL_DATE);
-                } catch (Exception ex) {
-                    // [3순위] 진짜 다 안되면 오늘 날짜 (안전장치)
-                    sDate = LocalDate.now(zone);
-                }
-            }
+        String tzId = (req.getTimeZone() != null && !req.getTimeZone().isBlank())
+                ? req.getTimeZone()
+                : zone.getId();
 
-            LocalDate eDate;
-            try {
-                // 종료일도 똑같이 처리
-                eDate = OffsetDateTime.parse(req.getEnd(), DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-                    .toLocalDate();
-            } catch (Exception e) {
-                try {
-                    eDate = LocalDate.parse(req.getEnd(), DateTimeFormatter.ISO_LOCAL_DATE);
-                } catch (Exception ex) {
-                    eDate = sDate.plusDays(1);
-                }
-            }
+        boolean allDay = Boolean.TRUE.equals(req.getAllDay()) ||
+                looksLikeDateOnly(req.getStart());
 
-            // 날짜 역전 방지
-            if (!eDate.isAfter(sDate)) eDate = sDate.plusDays(1);
+        Event ev = new Event().setSummary(title);
 
-            // 구글은 종일 일정일 때 setDate 사용 (String "yyyy-MM-dd")
-            start.setDate(new DateTime(sDate.toString()));
-            end.setDate(new DateTime(eDate.toString()));
-
-        } else {
-            // [시간 일정] AI가 준 ISO 문자열을 구글 DateTime 객체가 바로 인식함
-            start.setDateTime(new DateTime(req.getStart()));
-            start.setTimeZone(zone.getId());
-
-            end.setDateTime(new DateTime(req.getEnd()));
-            end.setTimeZone(zone.getId());
+        if (req.getDescription() != null) {
+            ev.setDescription(req.getDescription());
         }
 
-        event.setStart(start);
-        event.setEnd(end);
+        if (allDay) {
+            LocalDate s = (req.getStart() != null && looksLikeDateOnly(req.getStart()))
+                    ? LocalDate.parse(req.getStart(), ISO_LOCAL_DATE)
+                    : LocalDate.now(zone);
 
-        return event;
+            LocalDate e = (req.getEnd() != null && looksLikeDateOnly(req.getEnd()))
+                    ? LocalDate.parse(req.getEnd(), ISO_LOCAL_DATE)
+                    : s.plusDays(1);
+
+            if (!e.isAfter(s)) e = s.plusDays(1);
+
+            ev.setStart(new EventDateTime().setDate(new DateTime(s.toString())));
+            ev.setEnd(new EventDateTime().setDate(new DateTime(e.toString())));
+
+        } else {
+            Instant s = parseDate(req.getStart(), zone);
+            Instant e = parseDate(req.getEnd(), zone);
+
+            if (s == null) s = Instant.now();
+            if (e == null || !e.isAfter(s)) e = s.plus(Duration.ofHours(1));
+
+            ev.setStart(new EventDateTime()
+                    .setDateTime(new DateTime(s.toEpochMilli()))
+                    .setTimeZone(tzId));
+
+            ev.setEnd(new EventDateTime()
+                    .setDateTime(new DateTime(e.toEpochMilli()))
+                    .setTimeZone(tzId));
+        }
+
+        return ev;
     }
 
     /* ============================================================
-       📌 전체 동기화 (구글 → Mongo)  — runInitialSync에서 사용
+       📌 전체 동기화 (구글 → Mongo)
        ============================================================ */
 
     public List<CalendarEventDto> fetchAndSaveAllEvents(
@@ -281,7 +263,6 @@ public class GoogleCalendarService {
                 : userKey;
         ZoneId zone = DEFAULT_ZONE;
 
-        // 1) syncToken 확보 (singleEvents=false)
         String page = null;
         String lastSyncToken = null;
 
@@ -302,11 +283,12 @@ public class GoogleCalendarService {
 
         if (lastSyncToken != null && !lastSyncToken.isBlank()) {
             tokens.setSyncToken(lastSyncToken);
+            // 🔥 syncToken 변경 저장
+            googleOAuthClientService.save(tokens);
         } else {
             logger.warn("No nextSyncToken obtained for user {}", tokens.getUserId());
         }
 
-        // 2) UI용 전체 이벤트 수집 (singleEvents=true)
         List<Event> allExpanded = new ArrayList<>();
         page = null;
 
@@ -327,7 +309,6 @@ public class GoogleCalendarService {
             page = evPage.getNextPageToken();
         } while (page != null);
 
-        // 이전 색상 보존
         Map<String, String> previousColors = new HashMap<>();
         repository.findByUserIdOrderByStartTimestampAsc(resolvedKey)
                 .forEach(e -> {
@@ -336,7 +317,6 @@ public class GoogleCalendarService {
                     }
                 });
 
-        // 변환 + 색상 적용
         List<CalendarEventDto> dtos = allExpanded.stream()
                 .map(e -> {
                     CalendarEventDto dto = toDto(e, resolvedKey, zone);
@@ -347,7 +327,6 @@ public class GoogleCalendarService {
                 })
                 .collect(Collectors.toList());
 
-        // 기존 데이터 삭제 후 새 데이터 저장
         repository.deleteByUserId(resolvedKey);
         repository.saveAll(dtos);
 
@@ -398,7 +377,6 @@ public class GoogleCalendarService {
             throw new IllegalArgumentException("event not found in Google: " + eventId);
         }
 
-        // 제목/설명
         if (req.getTitle() != null) {
             existing.setSummary(req.getTitle().isBlank() ? "(제목없음)" : req.getTitle());
         }
@@ -406,7 +384,6 @@ public class GoogleCalendarService {
             existing.setDescription(req.getDescription());
         }
 
-        // 날짜/시간
         boolean allDay =
                 Boolean.TRUE.equals(req.getAllDay()) ||
                         (req.getStart() != null && looksLikeDateOnly(req.getStart()));
@@ -477,7 +454,6 @@ public class GoogleCalendarService {
 
         CalendarEventDto dto = toDto(updated, userKey, zone);
 
-        // 기존 색상 유지 or 새 색상 반영
         if (req.getColor() != null) {
             dto.setColor(req.getColor());
         } else {
@@ -505,7 +481,6 @@ public class GoogleCalendarService {
         } catch (GoogleJsonResponseException e) {
             int code = e.getStatusCode();
             if (code != 404 && code != 410) {
-                // 404/410은 이미 삭제된 상태이므로 무시, 나머지는 그대로 던짐
                 throw e;
             }
         }
@@ -519,7 +494,7 @@ public class GoogleCalendarService {
     }
 
     /* ============================================================
-       📌 로컬 전용 (카카오 로그인만 한 유저 등)
+       📌 로컬 전용
        ============================================================ */
 
     public CalendarEventDto createLocalEvent(String uid, CreateEventReq req) {
@@ -536,61 +511,14 @@ public class GoogleCalendarService {
         String eIso;
 
         if (allDay) {
-            System.out.println("====== [DEBUG] allDay 로직 시작 ======");
-            System.out.println("입력된 Start 값: " + req.getStart());
-            System.out.println("입력된 End 값:   " + req.getEnd());
+            LocalDate s = looksLikeDateOnly(req.getStart())
+                    ? LocalDate.parse(req.getStart(), ISO_LOCAL_DATE)
+                    : LocalDate.now(zone);
 
-            LocalDate s;
-            try {
-                // 1. 공백 제거 (혹시 모를 공백 때문일 수 있음)
-                String startStr = req.getStart().trim();
+            LocalDate e = looksLikeDateOnly(req.getEnd())
+                    ? LocalDate.parse(req.getEnd(), ISO_LOCAL_DATE)
+                    : s.plusDays(1);
 
-                // 2. AI가 주는 ISO 포맷 (2025-11-29T00:00:00+09:00) 파싱 시도
-                // ISO_DATE_TIME은 Offset이 있든 없든 웬만하면 다 받아줍니다.
-                s = OffsetDateTime.parse(startStr, DateTimeFormatter.ISO_DATE_TIME).toLocalDate();
-                System.out.println(">>> [성공] ISO 파싱 성공: " + s);
-
-            } catch (Exception e1) {
-                System.err.println(">>> [실패] 1차 ISO 파싱 실패: " + e1.getMessage());
-
-                // 3. 실패 시 타임스탬프(숫자)인지 확인
-                try {
-                    long millis = Long.parseLong(req.getStart().trim());
-                    s = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate();
-                    System.out.println(">>> [성공] 타임스탬프 파싱 성공: " + s);
-                } catch (Exception e2) {
-                    System.err.println(">>> [실패] 2차 타임스탬프 실패: " + e2.getMessage());
-
-                    // 4. 실패 시 짧은 날짜(2025-11-29)인지 확인
-                    try {
-                        s = LocalDate.parse(req.getStart().trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-                        System.out.println(">>> [성공] LocalDate 파싱 성공: " + s);
-                    } catch (Exception e3) {
-                        System.err.println(">>> [최종 실패] 모든 파싱 실패. 오늘 날짜로 설정합니다.");
-                        s = LocalDate.now(zone);
-                    }
-                }
-            }
-
-            // 종료일(e) 처리 - 시작일(s)과 같은 로직 적용
-            LocalDate e;
-            try {
-                String endStr = req.getEnd().trim();
-                e = OffsetDateTime.parse(endStr, DateTimeFormatter.ISO_DATE_TIME).toLocalDate();
-            } catch (Exception e1) {
-                try {
-                    long millis = Long.parseLong(req.getEnd().trim());
-                    e = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate();
-                } catch (Exception e2) {
-                    try {
-                        e = LocalDate.parse(req.getEnd().trim(), DateTimeFormatter.ISO_LOCAL_DATE);
-                    } catch (Exception e3) {
-                        e = s.plusDays(1); // 실패 시 시작일 다음날
-                    }
-                }
-            }
-
-            // 날짜 역전 방지
             if (!e.isAfter(s)) e = s.plusDays(1);
 
             ZonedDateTime sz = s.atStartOfDay(zone);
@@ -749,7 +677,6 @@ public class GoogleCalendarService {
         ZoneId zone = DEFAULT_ZONE;
 
         if (tokens.getSyncToken() == null || tokens.getSyncToken().isBlank()) {
-            // syncToken 없으면 전체 동기화
             fetchAndSaveAllEvents(tokens, userKey);
             return;
         }
@@ -765,9 +692,9 @@ public class GoogleCalendarService {
                     .setSyncToken(tokens.getSyncToken())
                     .execute();
         } catch (GoogleJsonResponseException e) {
-            // syncToken 만료 → full sync
             if (e.getStatusCode() == 410) {
                 tokens.setSyncToken(null);
+                googleOAuthClientService.save(tokens); // 🔥 변경 내용 저장
                 fetchAndSaveAllEvents(tokens, userKey);
                 return;
             }
@@ -789,7 +716,6 @@ public class GoogleCalendarService {
                     CalendarEventDto dtoFromGoogle = toDto(ev, userKey, zone);
 
                     repository.findById(eventId).ifPresentOrElse(existing -> {
-                        // 기존 색상 유지
                         dtoFromGoogle.setColor(existing.getColor());
                         dtoFromGoogle.setId(existing.getId());
                         repository.save(dtoFromGoogle);
@@ -804,13 +730,15 @@ public class GoogleCalendarService {
         String nextSyncToken = events.getNextSyncToken();
         if (nextSyncToken != null && !nextSyncToken.isBlank()) {
             tokens.setSyncToken(nextSyncToken);
+            googleOAuthClientService.save(tokens); // 🔥 syncToken 갱신 저장
         }
     }
+
     /**
      * 📍 모임 기반으로 생성한 이벤트에 meetingId를 세팅해서 다시 저장
      */
     public CalendarEventDto attachMeetingId(CalendarEventDto dto, String meetingId) {
         dto.setMeetingId(meetingId);
-        return calendarEventRepository.save(dto);
+        return repository.save(dto);
     }
 }
