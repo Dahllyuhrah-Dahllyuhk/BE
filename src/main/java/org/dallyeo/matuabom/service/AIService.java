@@ -46,7 +46,7 @@ public class AIService {
 
         // 1. Python AI 서버 호출
         AIResponseDTO response = webClient.post()
-            .uri("https://matuabom.store/api/ai/main")
+            .uri("http://localhost:5000/main")
             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .bodyValue(requestDTO)
             .retrieve()
@@ -111,7 +111,7 @@ public class AIService {
 
         // Python API 호출 (/summary)
         Map response = webClient.post()
-            .uri("https://matuabom.store/api/ai/summary")
+            .uri("http://localhost:5000/summary")
             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .bodyValue(requestBody)
             .retrieve()
