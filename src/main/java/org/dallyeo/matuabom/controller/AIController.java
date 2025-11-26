@@ -23,7 +23,10 @@ public class AIController {
     public ResponseEntity<?> call(
         @RequestBody AIRequestDTO request
     ) throws GeneralSecurityException, IOException {
-        return aiService.call(request);
+
+        ResponseEntity<?> response = aiService.call(request);
+        System.out.println(response.getBody());
+        return response;
     }
 
 }
