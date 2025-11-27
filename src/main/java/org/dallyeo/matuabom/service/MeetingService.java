@@ -211,6 +211,8 @@ public class MeetingService {
 
     // ----------------------------------------------------------------------------------
     // 참가자 시간표 부분 업데이트 (PATCH)
+    // 프론트는 항상 로컬 날짜(date) 1개 + 해당 날짜 슬롯 리스트만 보내고
+    // 백엔드가 UTC 변환 후 날짜 split 처리하여 DB에 반영한다.
     // ----------------------------------------------------------------------------------
     @Transactional
     public Meeting patchParticipantTimeStatus(
@@ -225,7 +227,9 @@ public class MeetingService {
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Participant not found: " + userId));
 
-        if (partialUpdates.isEmpty()) return meeting;
+        if (partialUpdates == null || partialUpdates.isEmpty()) {
+            return meeting;
+        }
 
         List<ParticipantTimeStatus> timeStatuses = participant.getTimeStatuses();
         if (timeStatuses == null) {
@@ -233,38 +237,65 @@ public class MeetingService {
             participant.setTimeStatuses(timeStatuses);
         }
 
-        LocalDate targetDate = LocalDate.parse(partialUpdates.get(0).getDate());
+        // 프론트는 무조건 KST 기준 날짜 한 개만 보낸다고 가정
+        AvailabilitySlotUpdateDto baseUpdate = partialUpdates.get(0);
+        LocalDate localDate = LocalDate.parse(baseUpdate.getDate()); // e.g., "2025-11-25"
 
-        Optional<ParticipantTimeStatus> targetStatusOpt = timeStatuses.stream()
-                .filter(s -> s.getDate() != null && s.getDate().equals(targetDate))
-                .findFirst();
-
-        final ParticipantTimeStatus targetStatus;
-
-        if (targetStatusOpt.isPresent()) {
-            targetStatus = targetStatusOpt.get();
-        } else {
-            targetStatus = ParticipantTimeStatus.createEmpty(targetDate);
-            timeStatuses.add(targetStatus);
-        }
-
-        Set<Integer> impossibleSlots = targetStatus.getImpossibleSlots();
-        if (impossibleSlots == null) {
-            impossibleSlots = new HashSet<>();
-            targetStatus.setImpossibleSlots(impossibleSlots);
-        }
+        // 로컬(KST) slot → UTC 변환 후 날짜 기준으로 재분배
+        Map<LocalDate, Set<Integer>> separatedSlotMap = new HashMap<>();
 
         for (AvailabilitySlotUpdateDto update : partialUpdates) {
-            Set<Integer> incomingSlots = new HashSet<>(update.getSlots());
+            for (Integer slot : update.getSlots()) {
 
-            if ("POSSIBLE".equals(update.getStatus())) {
-                impossibleSlots.removeAll(incomingSlots);
-            } else if ("IMPOSSIBLE".equals(update.getStatus())) {
-                impossibleSlots.addAll(incomingSlots);
+                // KST 기준 slot start
+                ZonedDateTime slotStartKST =
+                        ZonedDateTime.of(localDate, LocalTime.of(slot, 0), ZONE_SEOUL);
+
+                // UTC 변환
+                ZonedDateTime slotStartUTC = slotStartKST.withZoneSameInstant(ZoneId.of("UTC"));
+
+                // UTC 기준 날짜
+                LocalDate utcDate = slotStartUTC.toLocalDate();
+                int utcSlotHour = slotStartUTC.getHour();
+
+                separatedSlotMap.computeIfAbsent(utcDate, k -> new HashSet<>())
+                        .add(utcSlotHour);
             }
         }
 
-        targetStatus.setImpossibleSlots(impossibleSlots);
+        // 날짜별로 DB merge
+        for (Map.Entry<LocalDate, Set<Integer>> entry : separatedSlotMap.entrySet()) {
+
+            LocalDate utcDate = entry.getKey();
+            Set<Integer> utcSlots = entry.getValue();
+
+            // 기존 저장된 status 찾기
+            Optional<ParticipantTimeStatus> statusOpt = timeStatuses.stream()
+                    .filter(s -> s.getDate().equals(utcDate))
+                    .findFirst();
+
+            ParticipantTimeStatus targetStatus;
+            if (statusOpt.isPresent()) {
+                targetStatus = statusOpt.get();
+            } else {
+                targetStatus = ParticipantTimeStatus.createEmpty(utcDate);
+                timeStatuses.add(targetStatus);
+            }
+
+            Set<Integer> impossibleSlots = targetStatus.getImpossibleSlots();
+            if (impossibleSlots == null) {
+                impossibleSlots = new HashSet<>();
+                targetStatus.setImpossibleSlots(impossibleSlots);
+            }
+
+            if ("IMPOSSIBLE".equals(baseUpdate.getStatus())) {
+                impossibleSlots.addAll(utcSlots);  // merge
+            } else if ("POSSIBLE".equals(baseUpdate.getStatus())) {
+                impossibleSlots.removeAll(utcSlots);
+            }
+
+            targetStatus.setImpossibleSlots(impossibleSlots);
+        }
 
         return meetingRepository.save(meeting);
     }
