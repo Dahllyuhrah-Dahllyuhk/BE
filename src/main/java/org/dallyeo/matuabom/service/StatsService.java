@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import java.time.*;
 import java.util.*;
 
-import static org.dallyeo.matuabom.service.meeting.AvailableTimeCalculator.ZONE_SEOUL;
 
 
 @Service
@@ -89,13 +88,13 @@ public class StatsService {
 
     public int getMyThisMonthMeetingCount(String userId) {
             // 한국 시간 기준 "지금"
-            ZonedDateTime now = ZonedDateTime.now(ZONE_SEOUL);
+            ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Asia/Seoul"));
 
             // 이번 달 1일 00:00
             YearMonth thisMonth = YearMonth.from(now);
             LocalDate firstDay = thisMonth.atDay(1);
 
-            Instant monthStart = firstDay.atStartOfDay(ZONE_SEOUL).toInstant();
+            Instant monthStart = firstDay.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
             Instant nowInstant = now.toInstant();
 
             List<Meeting> myMeetings =
