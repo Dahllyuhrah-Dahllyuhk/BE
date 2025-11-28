@@ -21,7 +21,7 @@ public class AvailableTimeCalculator {
     private final CalendarEventService calendarEventService;
     private final TimetableService timetableService;
 
-    public static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
+    private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
     private static final ZoneId ZONE_UTC = ZoneId.of("UTC");
     private static final String ISO_LOCAL_DATE_FORMAT = "yyyy-MM-dd";
 
