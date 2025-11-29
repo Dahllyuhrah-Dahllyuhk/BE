@@ -27,6 +27,7 @@ public interface MeetingRepository extends MongoRepository<Meeting, String> {
     List<Meeting> searchByTitleAndDateRange(String userId, String keyword, String queryStart, String queryEnd);
 
     List<Meeting> findByStatusAndParticipantsUserId(String status, String userId);
+    List<Meeting> findByStatusOrStatusAndParticipantsUserId(String status1, String status2, String userId);
 
 
 }
