@@ -1,8 +1,8 @@
-name: Build, Push BE Image & Deploy
+name: Build & Push BE Image
 
 on:
   push:
-    branches: [ "develop" ]
+    branches: [ "main" ]
   workflow_dispatch: {}
 
 env:
@@ -47,32 +47,3 @@ jobs:
         run: |
           docker push $IMAGE_NAME:latest
           docker push $IMAGE_NAME:${{ github.sha }}
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build-and-push # build-and-push 작업이 성공해야만 실행
-
-    steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            
-            # 1. 'Deploy' 리포지토리가 clone된 폴더로 이동
-            cd /home/ubuntu/matuabom
-            
-            # 2. 
-            # git pull
-            
-            # 3. 방금 빌드된 새 BE 이미지를 PULL
-            docker compose pull be
-            
-            # 4. BE 서비스만 재시작
-            docker compose up -d --no-deps --force-recreate be
-            
-            # 5. 사용하지 않는 (dangling) 이미지 정리
-            docker image prune -f
