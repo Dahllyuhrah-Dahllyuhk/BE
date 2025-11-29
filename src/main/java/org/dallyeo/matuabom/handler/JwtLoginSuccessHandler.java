@@ -37,7 +37,6 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final GoogleOAuthClientService googleOAuthClientService;
     private final OAuth2AuthorizedClientService oAuth2AuthorizedClientService;
     private final JwtUtil jwtUtil;
-
     private final org.dallyeo.matuabom.service.GoogleSyncService googleSyncService;
 
     @Override
@@ -52,23 +51,19 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
 
         if ("kakao".equals(provider)) {
             handleKakaoLogin(response, oauthToken, authentication);
-            // 세션/보안 컨텍스트 정리
             cleanupSession(request, response);
             return;
         }
 
         if ("google".equals(provider)) {
             handleGoogleLogin(request, response, oauthToken, authentication);
-            // 세션/보안 컨텍스트 정리
             cleanupSession(request, response);
             return;
         }
 
-        // fallback
         cleanupSession(request, response);
         response.sendRedirect(frontendBaseUrl);
     }
-
 
     // =====================================================
     // 1) 카카오 로그인
@@ -96,17 +91,15 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
 
         String userId = userService.upsertKakaoUser(dto);
 
-        // JWT 쿠키 저장
         String accessToken = jwtUtil.createAccessToken(userId);
         ResponseCookie cookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
-            .path("/")
-            .httpOnly(true) // JS에서 접근 불가 (보안)
-            .secure(true)  // 💡 로컬(http)에서는 false여야 함
-            .maxAge(Duration.ofHours(1))
-            .build();
+                .path("/")
+                .httpOnly(true)
+                .secure(true)
+                .maxAge(Duration.ofHours(1))
+                .build();
 
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-
         response.sendRedirect(frontendBaseUrl);
     }
 
@@ -114,30 +107,20 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         OAuth2User user = (OAuth2User) auth.getPrincipal();
         Map<String, Object> attrs = user.getAttributes();
 
-        // 1) id
         Long id = ((Number) attrs.get("id")).longValue();
-
-        // 2) kakao_account 전체 맵 가져오기
         Map<String, Object> accountMap = (Map<String, Object>) attrs.get("kakao_account");
 
-        if (accountMap == null) {
-            return new KakaoUserInfo(id, null); // fallback
-        }
+        if (accountMap == null) return new KakaoUserInfo(id, null);
 
-        // 3) profile 맵
         Map<String, Object> profileMap = (Map<String, Object>) accountMap.get("profile");
-
         if (profileMap == null) {
-            KakaoUserInfo.KakaoAccount account =
-                    new KakaoUserInfo.KakaoAccount();
+            KakaoUserInfo.KakaoAccount account = new KakaoUserInfo.KakaoAccount();
             return new KakaoUserInfo(id, account);
         }
 
-        // 4) nickname + profileImage
         String nickname = (String) profileMap.get("nickname");
         String profileImg = (String) profileMap.get("profile_image_url");
 
-        // 5) DTO 조립
         KakaoUserInfo.KakaoProfile profile = new KakaoUserInfo.KakaoProfile();
         profile.setNickname(nickname);
         profile.setProfileImageUrl(profileImg);
@@ -149,9 +132,8 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         return new KakaoUserInfo(id, account);
     }
 
-
     // =====================================================
-    // 2) 구글 동기화 / 연동
+    // 2) 구글 연동 / 동기화
     // =====================================================
     private void handleGoogleLogin(
             HttpServletRequest request,
@@ -160,38 +142,30 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
             Authentication authentication
     ) throws IOException {
 
-        // A. 우리 userId 가져오기
         String jwt = getCookie(request, "ACCESS_TOKEN");
         String userId = (jwt != null) ? jwtUtil.getUserIdFromToken(jwt) : null;
+
         if (userId == null) {
             response.sendRedirect(frontendBaseUrl);
             return;
         }
 
-        // B. 구글 이메일 확보
         OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
         String googleEmail = (String) oauth2User.getAttributes().get("email");
 
-        // C. DB에 "구글 연동됨" 표시
         userService.linkGoogleEmail(userId, googleEmail);
 
-        // D. OAuth AuthorizedClient 가져오기
         OAuth2AuthorizedClient googleClient =
                 oAuth2AuthorizedClientService.loadAuthorizedClient("google", oauthToken.getName());
 
-        // E. 토큰 DB 저장 (분리형 구조)
         googleOAuthClientService.saveTokens(userId, googleEmail, googleClient);
 
-        googleSyncService.runInitialSync(userId);
+        // 🔥 runInitialSync -> runIncrementalSync 로 변경 (통합)
+        googleSyncService.runIncrementalSync(userId);
 
-        // F. redispatch
         response.sendRedirect(frontendBaseUrl);
     }
 
-
-    // =====================================================
-    // UTIL
-    // =====================================================
     private String getCookie(HttpServletRequest request, String name) {
         if (request.getCookies() == null) return null;
         for (Cookie c : request.getCookies()) {
@@ -200,36 +174,18 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         return null;
     }
 
-    /**
-     * 로그인(소셜) 완료 후 서버 세션과 스프링 시큐리티 컨텍스트를 정리합니다.
-     * - HttpSession이 존재하면 SPRING_SECURITY_CONTEXT와 OAuth2 요청 객체를 제거하고 invalidate합니다.
-     * - SecurityContextHolder를 clear 합니다.
-     * - JSESSIONID 같은 세션 쿠키는 만료시켜 클라이언트에서도 제거되도록 합니다.
-     */
     private void cleanupSession(HttpServletRequest request, HttpServletResponse response) {
         try {
-            // 1) HttpSession 정리
             HttpSession session = request.getSession(false);
             if (session != null) {
-                // 스프링 시큐리티 컨텍스트 제거
-                try {
-                    session.removeAttribute("SPRING_SECURITY_CONTEXT");
-                } catch (Exception ignored) {}
-
-                // OAuth2 authorization request가 세션에 남아있을 수 있으니 제거
-                // 프레임워크 버전/구성에 따라 이름이 다를 수 있으므로 몇 가지 후보를 제거
+                try { session.removeAttribute("SPRING_SECURITY_CONTEXT"); } catch (Exception ignored) {}
                 try { session.removeAttribute("oauth2_auth_request"); } catch (Exception ignored) {}
                 try { session.removeAttribute("OAUTH2_AUTHORIZATION_REQUEST"); } catch (Exception ignored) {}
-                try { session.removeAttribute("org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter.DEFAULT_AUTHORIZATION_REQUEST_ATTR_NAME"); } catch (Exception ignored) {}
-
-                // 세션 무효화
                 try { session.invalidate(); } catch (IllegalStateException ignored) {}
             }
 
-            // 2) SecurityContext 정리
             SecurityContextHolder.clearContext();
 
-            // 3) 세션 쿠키 만료 (JSESSIONID 등)
             ResponseCookie expiredSessionCookie = ResponseCookie.from("JSESSIONID", "")
                     .path("/")
                     .httpOnly(true)
@@ -237,15 +193,6 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
                     .build();
             response.addHeader(HttpHeaders.SET_COOKIE, expiredSessionCookie.toString());
 
-            // 4) 만약 OAuth2 관련 임시 쿠키가 있다면 만료
-            ResponseCookie expiredOAuth2Cookie = ResponseCookie.from("OAUTH2_AUTH_REQUEST", "")
-                    .path("/")
-                    .httpOnly(true)
-                    .maxAge(Duration.ofSeconds(0))
-                    .build();
-            response.addHeader(HttpHeaders.SET_COOKIE, expiredOAuth2Cookie.toString());
-
-        } catch (Exception e) {
-        }
+        } catch (Exception ignored) {}
     }
 }
