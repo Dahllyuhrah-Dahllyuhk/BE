@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.dto.CalendarEventDto;
 import org.dallyeo.matuabom.dto.CreateEventReq;
 import org.dallyeo.matuabom.service.CalendarEventService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -17,47 +18,32 @@ public class CalendarController {
 
     private final CalendarEventService calendarEventService;
 
-    // ========================================================
-    // 📌 전체 일정 조회 (구글 ↔ 몽고 실시간 싱크 자동 반영)
-    // ========================================================
     @GetMapping("/events")
-    public List<CalendarEventDto> getEvents(
+    public ResponseEntity<List<CalendarEventDto>> getEvents(
             @RequestParam(required = false) String start,
             @RequestParam(required = false) String end
-    ) throws GeneralSecurityException, IOException {
-
-        return calendarEventService.getEvents(start, end);
+    ) {
+        return ResponseEntity.ok(calendarEventService.getEvents(start, end));
     }
 
-    // ========================================================
-    // 📌 일정 생성
-    // ========================================================
     @PostMapping("/events")
-    public CalendarEventDto create(@RequestBody CreateEventReq req)
-            throws GeneralSecurityException, IOException {
-
-        return calendarEventService.create(req);
+    public ResponseEntity<CalendarEventDto> create(@RequestBody CreateEventReq req) throws GeneralSecurityException, IOException {
+        CalendarEventDto dto = calendarEventService.create(req);
+        return ResponseEntity.ok(dto);
     }
 
-    // ========================================================
-    // 📌 일정 수정
-    // ========================================================
     @PutMapping("/events/{eventId}")
-    public CalendarEventDto update(
+    public ResponseEntity<CalendarEventDto> update(
             @PathVariable String eventId,
             @RequestBody CreateEventReq req
     ) throws GeneralSecurityException, IOException {
-
-        return calendarEventService.update(eventId, req);
+        CalendarEventDto dto = calendarEventService.update(eventId, req);
+        return ResponseEntity.ok(dto);
     }
 
-    // ========================================================
-    // 📌 일정 삭제
-    // ========================================================
     @DeleteMapping("/events/{eventId}")
-    public void delete(@PathVariable String eventId)
-            throws GeneralSecurityException, IOException {
-
+    public ResponseEntity<Void> delete(@PathVariable String eventId) throws GeneralSecurityException, IOException {
         calendarEventService.delete(eventId);
+        return ResponseEntity.noContent().build();
     }
 }
