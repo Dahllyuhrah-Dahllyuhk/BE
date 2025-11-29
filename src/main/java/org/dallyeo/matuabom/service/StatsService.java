@@ -26,6 +26,7 @@ public class StatsService {
         int myThisMonthMeetingCount = getMyThisMonthMeetingCount(userId);
         //예정된 모임 수
         List<Meeting> confirmedMeetings = meetingRepository.findByStatusAndParticipantsUserId("CONFIRMED", userId);
+        List<Meeting> confirmedOrClosedMeetings = meetingRepository.findByStatusOrStatusAndParticipantsUserId("CONFIRMED", "CLOSED", userId);
         long upcomingCount = confirmedMeetings.stream()
                 .filter(m -> m.getConfirmedStart() != null && m.getConfirmedStart().isAfter(now))
                 .filter(m -> isAccepted(m, userId))
@@ -35,8 +36,10 @@ public class StatsService {
         for (TimeSlot slot : TimeSlot.values()) {
             count.put(slot, 0L);
         }
-        for (Meeting meeting : confirmedMeetings) {
+        for (Meeting meeting : confirmedOrClosedMeetings) {
             Instant start = meeting.getConfirmedStart();
+
+            if (start == null) continue;
 
             //현시점에서 미래에 있는 모임은 포함 x
             if(start.isAfter(now)) continue;
@@ -58,7 +61,7 @@ public class StatsService {
     }
 
     public List<TopPartnerDto> getTopPartners(String userId, int limit) {
-        List<Meeting> meetings = meetingRepository.findByStatusAndParticipantsUserId("CONFIRMED", userId);
+        List<Meeting> meetings = meetingRepository.findByStatusOrStatusAndParticipantsUserId("CONFIRMED", "CLOSED", userId);
         Map<String, PartnerCounter> countingMap = new HashMap<>();
         for (Meeting meeting : meetings) {
             if (meeting.getParticipants() == null || meeting.getConfirmedStart().isAfter(Instant.now())) continue;
@@ -101,8 +104,8 @@ public class StatsService {
                     meetingRepository.findAllByHostUserIdOrParticipantsUserId(userId, userId);
 
             long count = myMeetings.stream()
-                    // 확정된 모임만
-                    .filter(m -> "CONFIRMED".equals(m.getStatus()))
+                    // 확정 또는 종료된 모임만
+                    .filter(m -> "CONFIRMED".equals(m.getStatus())||"CLOSED".equals(m.getStatus()))
                     // 이번 달에 시작했고, 이미 시작된 모임만 (confirmedStart ≤ now)
                     .filter(m -> {
                         Instant start = m.getConfirmedStart();

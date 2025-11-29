@@ -497,7 +497,7 @@ public class MeetingService {
                     createConfirmedEventsForParticipants(meeting);
                 }
 
-            } else {
+            } else if("PENDING".equals(newStatus)) {
                 // PENDING / CLOSED로 돌아가면 확정 시간 정보 제거
                 meeting.setConfirmedStart(null);
                 meeting.setConfirmedEnd(null);
@@ -505,7 +505,6 @@ public class MeetingService {
                 // 필요하다면: 과거에 생성된 meetingId 기반 calendar_events 삭제 가능
                 // calendarEventRepository.deleteByMeetingId(meetingId);
             }
-
             meeting.setStatus(newStatus);
             return meetingRepository.save(meeting);
         }
