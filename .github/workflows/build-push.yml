@@ -113,20 +113,22 @@ jobs:
 
             echo "BE 헬스체크 시작..."
             for i in $(seq 1 30); do
-              HEALTH=$(docker exec be wget -qO- http://localhost:8080/actuator/health 2>/dev/null || echo "")
+              RUNNING=$(docker inspect --format='{{.State.Running}}' be 2>/dev/null || echo "false")
+              RESTARTING=$(docker inspect --format='{{.State.Restarting}}' be 2>/dev/null || echo "true")
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' be 2>/dev/null || echo "none")
 
-              if echo "$HEALTH" | grep -q '"status":"UP"'; then
+              if [ "$RUNNING" = "true" ] && [ "$RESTARTING" = "false" ] && [ "$HEALTH" = "healthy" ]; then
                 echo "BE 배포 성공 (attempt $i)"
                 break
               fi
 
               if [ $i -eq 30 ]; then
-                echo "BE 헬스체크 실패"
+                echo "BE 헬스체크 실패 (running=$RUNNING, health=$HEALTH)"
                 docker compose -f /home/ubuntu/Deploy/docker-compose.yml logs --tail=50 be
                 exit 1
               fi
 
-              echo "대기 중... ($i/30)"
+              echo "대기 중... ($i/30, running=$RUNNING, health=$HEALTH)"
               sleep 5
             done
 
