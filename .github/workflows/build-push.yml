@@ -95,7 +95,7 @@ jobs:
             echo "삭제: $DIGEST"
           done
 
-      # ── 8. EC2 배포 ──────────────────────────────────────────────────────
+      # ── 8. 배포 ──────────────────────────────────────────────────────────
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -103,20 +103,14 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key:      ${{ secrets.DEPLOY_KEY }}
           script: |
-            # ECR 로그인
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
               | docker login --username AWS --password-stdin \
                 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-            cd /home/ubuntu/matuabom
-
-            # 최신 이미지 pull
+            cd /home/ubuntu/Deploy
             docker compose pull be
-
-            # 무중단 재시작
             docker compose up -d --no-deps --force-recreate be
 
-            # 헬스체크 (최대 90초 대기 — Spring Boot 기동 시간 고려)
             echo "BE 헬스체크 시작..."
             for i in $(seq 1 18); do
               HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
@@ -128,7 +122,7 @@ jobs:
               fi
 
               if [ $i -eq 18 ]; then
-                echo "BE 헬스체크 실패 (status=$HTTP_STATUS) — 배포 실패"
+                echo "BE 헬스체크 실패 (HTTP=$HTTP_STATUS)"
                 docker compose logs --tail=50 be
                 exit 1
               fi
@@ -137,5 +131,4 @@ jobs:
               sleep 5
             done
 
-            # 댕글링 이미지 정리
             docker image prune -f
