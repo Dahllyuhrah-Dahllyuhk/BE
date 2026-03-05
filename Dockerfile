@@ -18,7 +18,8 @@ FROM eclipse-temurin:21-jre-alpine AS runner
 WORKDIR /app
 
 # non-root 사용자 (보안)
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN addgroup -S spring && adduser -S spring -G spring && \
+    apk add --no-cache curl
 
 COPY --from=builder --chown=spring:spring /app/build/libs/*.jar app.jar
 

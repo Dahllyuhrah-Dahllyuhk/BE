@@ -104,7 +104,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health   # health 엔드포인트만 노출
+        include: health
   endpoint:
     health:
-      show-details: never  # 상세 정보 외부 노출 차단
+      show-details: never
+      probes:
+        enabled: true   # /actuator/health/liveness, /actuator/health/readiness 활성화
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
