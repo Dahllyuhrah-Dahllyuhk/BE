@@ -112,22 +112,21 @@ jobs:
             docker compose up -d --no-deps --force-recreate be
 
             echo "BE 헬스체크 시작..."
-            for i in $(seq 1 18); do
-              HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-                http://localhost:8080/actuator/health 2>/dev/null || echo "000")
+            for i in $(seq 1 30); do
+              HEALTH=$(docker exec be wget -qO- http://localhost:8080/actuator/health 2>/dev/null || echo "")
 
-              if [ "$HTTP_STATUS" = "200" ]; then
+              if echo "$HEALTH" | grep -q '"status":"UP"'; then
                 echo "BE 배포 성공 (attempt $i)"
                 break
               fi
 
-              if [ $i -eq 18 ]; then
-                echo "BE 헬스체크 실패 (HTTP=$HTTP_STATUS)"
-                docker compose logs --tail=50 be
+              if [ $i -eq 30 ]; then
+                echo "BE 헬스체크 실패"
+                docker compose -f /home/ubuntu/Deploy/docker-compose.yml logs --tail=50 be
                 exit 1
               fi
 
-              echo "대기 중... ($i/18, HTTP=$HTTP_STATUS)"
+              echo "대기 중... ($i/30)"
               sleep 5
             done
 
