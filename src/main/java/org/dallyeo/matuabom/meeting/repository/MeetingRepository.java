@@ -5,10 +5,15 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface MeetingRepository extends MongoRepository<Meeting, String> {
 
     List<Meeting> findAllByHostUserIdOrParticipantsUserId(String hostId, String participantId);
+
+    Optional<Meeting> findByInviteCode(String inviteCode);
+
+    boolean existsByInviteCode(String inviteCode);
 
     @Query("{ $and: [ { $or: [ { 'hostUserId': ?0 }, { 'participants.userId': ?0 } ] }, { 'name': { $regex: ?1, $options: 'i' } } ] }")
     List<Meeting> searchByTitle(String userId, String keyword);

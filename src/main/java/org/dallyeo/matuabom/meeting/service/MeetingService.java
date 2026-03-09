@@ -64,10 +64,13 @@ public class MeetingService {
             .findFirst()
             .ifPresent(hostParticipant -> recalculateParticipantSchedules(hostParticipant, requirement));
 
+        String inviteCode = generateUniqueInviteCode();
+
         Meeting meeting = Meeting.builder()
             .hostUserId(hostUserId)
             .name(request.getName())
             .status("PENDING")
+            .inviteCode(inviteCode)
             .requirement(requirement)
             .participants(participants)
             .build();
@@ -507,6 +510,51 @@ public class MeetingService {
     // -------------------------------------------------------------------------
     // 내부 헬퍼
     // -------------------------------------------------------------------------
+
+    private String generateUniqueInviteCode() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        Random random = new Random();
+        while (true) {
+            StringBuilder sb = new StringBuilder(8);
+            for (int i = 0; i < 8; i++) sb.append(chars.charAt(random.nextInt(chars.length())));
+            String code = sb.toString();
+            if (!meetingRepository.existsByInviteCode(code)) return code;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 모임 코드로 참여
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public Meeting joinByInviteCode(String userId, String inviteCode) {
+        Meeting meeting = meetingRepository.findByInviteCode(inviteCode.toUpperCase())
+            .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 초대 코드입니다."));
+
+        if (!"PENDING".equals(meeting.getStatus())) {
+            throw new IllegalStateException("조율 중인 모임에만 참여할 수 있습니다.");
+        }
+
+        boolean alreadyJoined = meeting.getParticipants().stream()
+            .anyMatch(p -> p.getUserId().equals(userId));
+        if (alreadyJoined) {
+            throw new IllegalStateException("이미 참여한 모임입니다.");
+        }
+
+        UserEntity user = userRepository.findByMongoId(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+        MeetingParticipant newParticipant = new MeetingParticipant();
+        newParticipant.setUserId(userId);
+        newParticipant.setName(user.getNickname());
+        newParticipant.setStatus("ACCEPTED");
+        newParticipant.setTimeStatuses(new ArrayList<>());
+        newParticipant.setReflectTimetable(true);
+        newParticipant.setReflectCalendar(true);
+
+        meeting.getParticipants().add(newParticipant);
+        return meetingRepository.save(meeting);
+    }
 
     private void recalculateParticipantSchedules(MeetingParticipant participant, MeetingRequirement requirement) {
         List<ParticipantTimeStatus> fixedImpossibleStatuses =

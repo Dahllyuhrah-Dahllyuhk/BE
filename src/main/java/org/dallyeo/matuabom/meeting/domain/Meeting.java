@@ -20,6 +20,7 @@ public class Meeting {
     private String id;
     private String hostUserId;
     private String name;
+    private String inviteCode; // 모임 초대 코드 (8자리)
     /**
      * 상태:
      * - PENDING   : 투표/조율 중

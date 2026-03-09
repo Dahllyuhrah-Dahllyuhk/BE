@@ -145,6 +145,37 @@ public class MeetingController {
     }
 
     // -------------------------------------------------------------------------
+    // 모임 초대 코드
+    // -------------------------------------------------------------------------
+
+    /** 모임 초대 코드 조회 (호스트 전용) */
+    @GetMapping("/{meetingId}/invite-code")
+    public ResponseEntity<Map<String, String>> getMeetingInviteCode(
+        @PathVariable String meetingId,
+        @AuthenticationPrincipal CustomPrincipal principal
+    ) {
+        Meeting meeting = meetingService.findById(meetingId);
+        if (!meeting.getHostUserId().equals(principal.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(Map.of("inviteCode", meeting.getInviteCode() != null ? meeting.getInviteCode() : ""));
+    }
+
+    /** 초대 코드로 모임 참여 */
+    @PostMapping("/join")
+    public ResponseEntity<Meeting> joinByInviteCode(
+        @AuthenticationPrincipal CustomPrincipal principal,
+        @RequestBody Map<String, String> body
+    ) {
+        String inviteCode = body.get("inviteCode");
+        if (inviteCode == null || inviteCode.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Meeting meeting = meetingService.joinByInviteCode(principal.getUserId(), inviteCode.trim());
+        return ResponseEntity.ok(meeting);
+    }
+
+    // -------------------------------------------------------------------------
     // 모임 상태 변경 (PENDING / CONFIRMED / CLOSED)
     // -------------------------------------------------------------------------
 

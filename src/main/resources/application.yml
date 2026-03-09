@@ -96,8 +96,8 @@ app:
   backend-base-url: ${BACKEND_BASE_URL:http://localhost:8080}
   cookie-secure: ${COOKIE_SECURE:false}
   jwt:
-    access-token-seconds: 3600       # 1시간
-    refresh-token-seconds: 1296000   # 15일
+    access-token-seconds: 7200        # 2시간
+    refresh-token-seconds: 2592000    # 30일
 
 # ── Actuator (헬스체크 전용) ───────────────────────────────────────────
 management:
