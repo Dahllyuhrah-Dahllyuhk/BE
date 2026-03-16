@@ -55,7 +55,7 @@ public class SecurityConfig {
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/api/google/webhook").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
-                        .requestMatchers("/api/sse/events").permitAll()
+                        .requestMatchers("/api/admin/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
@@ -88,7 +88,7 @@ public class SecurityConfig {
         config.setAllowCredentials(true);
         config.setAllowedOrigins(List.of("http://localhost:3000","http://localhost:5000", frontendBaseUrl));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "X-Admin-Secret"));
         config.setExposedHeaders(List.of("Set-Cookie"));
 
         UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();

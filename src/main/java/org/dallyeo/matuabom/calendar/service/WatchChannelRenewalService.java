@@ -27,7 +27,11 @@ public class WatchChannelRenewalService {
         Instant threshold = Instant.now().plusSeconds(86400); // 24시간 이내 만료
         List<GoogleOAuthClientEntity> candidates = repo.findAll().stream()
                 .filter(e -> e.getRefreshToken() != null) // Google 연동 사용자만
-                .filter(e -> e.getWatchExpiresAt() == null || e.getWatchExpiresAt().isBefore(threshold))
+                .filter(e -> {
+                    // watchExpiresAt이 null이면 아직 채널 등록 자체가 안 된 것 → 등록 대상
+                    // watchExpiresAt이 24시간 이내 만료 예정 → 갱신 대상
+                    return e.getWatchExpiresAt() == null || e.getWatchExpiresAt().isBefore(threshold);
+                })
                 .toList();
 
         log.info("WatchChannel renewal: {} channels to renew", candidates.size());

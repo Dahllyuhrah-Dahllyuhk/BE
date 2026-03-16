@@ -61,7 +61,7 @@ public class CalendarEventService {
             saved = googleCalendarService.createLocalEvent(uid, req);
         }
 
-        eventSseService.sendEventsUpdated();
+        eventSseService.sendEventsUpdated(uid);
         return saved;
     }
 
@@ -84,7 +84,7 @@ public class CalendarEventService {
                 int code = e.getStatusCode();
                 if (code == 404 || code == 410) {
                     repository.deleteById(eventId);
-                    eventSseService.sendEventsUpdated();
+                    eventSseService.sendEventsUpdated(uid);
                     throw new IllegalStateException("Google event already removed");
                 }
                 throw e;
@@ -96,7 +96,7 @@ public class CalendarEventService {
             updated = googleCalendarService.updateLocalEvent(uid, eventId, req);
         }
 
-        eventSseService.sendEventsUpdated();
+        eventSseService.sendEventsUpdated(uid);
         return updated;
     }
 
@@ -130,7 +130,7 @@ public class CalendarEventService {
             repository.deleteById(eventId);
         }
 
-        eventSseService.sendEventsUpdated();
+        eventSseService.sendEventsUpdated(uid);
     }
 
     private Long parseLongOrNull(String v) {

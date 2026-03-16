@@ -95,6 +95,7 @@ app:
   frontend-base-url: ${FRONTEND_ORIGIN:http://localhost:3000}
   backend-base-url: ${BACKEND_BASE_URL:http://localhost:8080}
   cookie-secure: ${COOKIE_SECURE:false}
+  admin-secret: ${ADMIN_SECRET:admin1234}
   jwt:
     access-token-seconds: 7200        # 2시간
     refresh-token-seconds: 2592000    # 30일

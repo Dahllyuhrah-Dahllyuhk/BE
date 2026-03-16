@@ -6,6 +6,8 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.calendar.dto.CalendarEventDto;
@@ -46,6 +48,18 @@ public class GoogleCalendarService {
     private String backendBaseUrl;
 
     // -------------------------------------------------------------------------
+    // SyncResult
+    // -------------------------------------------------------------------------
+
+    @Data
+    @AllArgsConstructor
+    public static class SyncResult {
+        private List<CalendarEventDto> changed;
+        private List<String> deletedIds;
+        private boolean needsFullRefresh;
+    }
+
+    // -------------------------------------------------------------------------
     // 내부 헬퍼
     // -------------------------------------------------------------------------
 
@@ -62,8 +76,7 @@ public class GoogleCalendarService {
             }
             try {
                 return OffsetDateTime.parse(t, ISO_OFFSET_DT).toInstant();
-            } catch (Exception ignore) {
-            }
+            } catch (Exception ignore) {}
             return Instant.parse(t);
         } catch (Exception e) {
             return null;
@@ -95,40 +108,6 @@ public class GoogleCalendarService {
                 http, json,
                 req -> req.getHeaders().setAuthorization("Bearer " + accessToken)
         ).setApplicationName("Matuabom Calendar Integration").build();
-    }
-
-    // -------------------------------------------------------------------------
-    // Webhook watch 등록
-    // -------------------------------------------------------------------------
-
-    public void ensureWatchChannel(GoogleOAuthClientEntity tokens)
-            throws GeneralSecurityException, IOException {
-
-        if (tokens.getWatchExpiresAt() != null &&
-                tokens.getWatchExpiresAt().isAfter(Instant.now().plusSeconds(60))) {
-            return;
-        }
-
-        Calendar client = buildCalendarClient(tokens);
-        Channel channel = new Channel();
-        channel.setId(UUID.randomUUID().toString());
-        channel.setType("web_hook");
-        channel.setAddress(backendBaseUrl + "/api/google/webhook");
-        channel.setToken(tokens.getUserId());
-
-        try {
-            Channel created = client.events().watch("primary", channel).execute();
-            tokens.setWatchChannelId(created.getId());
-            tokens.setWatchResourceId(created.getResourceId());
-            if (created.getExpiration() != null) {
-                tokens.setWatchExpiresAt(Instant.ofEpochMilli(created.getExpiration()));
-            }
-            googleOAuthClientService.save(tokens);
-        } catch (GoogleJsonResponseException e) {
-            logger.warn("Google Watch registration failed (status={}): {}",
-                    e.getStatusCode(),
-                    e.getDetails() != null ? e.getDetails().toString() : e.getMessage());
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -205,7 +184,7 @@ public class GoogleCalendarService {
     }
 
     // -------------------------------------------------------------------------
-    // 전체 이벤트 조회 (Google + Mongo 저장)
+    // 전체 이벤트 조회 (Google → Mongo 저장)
     // -------------------------------------------------------------------------
 
     public List<CalendarEventDto> fetchAndSaveAllEvents(
@@ -460,7 +439,7 @@ public class GoogleCalendarService {
     }
 
     // -------------------------------------------------------------------------
-    // 증분 동기화 (Google → Mongo)
+    // 증분 동기화 (Google → Mongo) — 기존 방식 유지
     // -------------------------------------------------------------------------
 
     public void incrementalSync(GoogleOAuthClientEntity tokens)
@@ -521,6 +500,126 @@ public class GoogleCalendarService {
             tokens.setSyncToken(events.getNextSyncToken());
         }
         googleOAuthClientService.save(tokens);
+    }
+
+    // -------------------------------------------------------------------------
+    // 증분 동기화 + 변경 내역 반환 (SSE 개별 이벤트 전송용)
+    // -------------------------------------------------------------------------
+
+    public SyncResult incrementalSyncWithResult(GoogleOAuthClientEntity tokens)
+            throws IOException, GeneralSecurityException {
+
+        List<CalendarEventDto> changed = new ArrayList<>();
+        List<String> deletedIds = new ArrayList<>();
+
+        String userKey = tokens.getUserId();
+        ZoneId zone = DEFAULT_ZONE;
+
+        // syncToken 없으면 full sync 먼저 실행 후 전체 새로고침 신호
+        if (tokens.getSyncToken() == null || tokens.getSyncToken().isBlank()) {
+            fetchAndSaveAllEvents(tokens, userKey);
+            return new SyncResult(List.of(), List.of(), true);
+        }
+
+        Calendar service = buildCalendarClient(tokens);
+        Events events;
+
+        try {
+            events = service.events().list("primary")
+                    .setSingleEvents(true)
+                    .setShowDeleted(true)
+                    .setSyncToken(tokens.getSyncToken())
+                    .execute();
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 410) {
+                tokens.setSyncToken(null);
+                googleOAuthClientService.save(tokens);
+                fetchAndSaveAllEvents(tokens, userKey);
+                return new SyncResult(List.of(), List.of(), true);
+            }
+            throw e;
+        }
+
+        if (events.getItems() != null) {
+            for (Event ev : events.getItems()) {
+                String eventId = ev.getId();
+                if ("cancelled".equals(ev.getStatus())) {
+                    repository.findById(eventId).ifPresent(dto -> {
+                        if (Objects.equals(dto.getUserId(), userKey)) {
+                            repository.delete(dto);
+                            deletedIds.add(eventId);
+                        }
+                    });
+                } else {
+                    CalendarEventDto dto = toDto(ev, userKey, zone);
+                    repository.findById(eventId).ifPresentOrElse(existing -> {
+                        dto.setColor(existing.getColor());
+                        dto.setId(existing.getId());
+                        repository.save(dto);
+                        changed.add(dto);
+                    }, () -> {
+                        dto.setId(eventId);
+                        repository.save(dto);
+                        changed.add(dto);
+                    });
+                }
+            }
+        }
+
+        if (events.getNextSyncToken() != null && !events.getNextSyncToken().isBlank()) {
+            tokens.setSyncToken(events.getNextSyncToken());
+        }
+        googleOAuthClientService.save(tokens);
+
+        return new SyncResult(changed, deletedIds, false);
+    }
+
+    // -------------------------------------------------------------------------
+    // 웹훅 채널 등록 / 갱신
+    // -------------------------------------------------------------------------
+
+    public void ensureWatchChannel(GoogleOAuthClientEntity tokens) {
+        if (tokens.getWatchExpiresAt() != null
+                && tokens.getWatchExpiresAt().isAfter(Instant.now().plusSeconds(3600))) {
+            return;
+        }
+
+        try {
+            Calendar service = buildCalendarClient(tokens);
+
+            if (tokens.getWatchChannelId() != null && tokens.getWatchResourceId() != null) {
+                try {
+                    Channel stopBody = new Channel()
+                            .setId(tokens.getWatchChannelId())
+                            .setResourceId(tokens.getWatchResourceId());
+                    service.channels().stop(stopBody).execute();
+                } catch (Exception ignored) {}
+            }
+
+            String newChannelId = UUID.randomUUID().toString();
+            long expiresMs = System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000;
+
+            Channel watchBody = new Channel()
+                    .setId(newChannelId)
+                    .setType("web_hook")
+                    .setAddress(backendBaseUrl + "/api/google/webhook")
+                    .setExpiration(expiresMs);
+
+            Channel response = service.events().watch("primary", watchBody).execute();
+
+            tokens.setWatchChannelId(response.getId());
+            tokens.setWatchResourceId(response.getResourceId());
+            tokens.setWatchExpiresAt(Instant.ofEpochMilli(response.getExpiration()));
+            tokens.setUpdatedAt(Instant.now());
+            googleOAuthClientService.save(tokens);
+
+            logger.info("Watch channel registered for userId={}, channelId={}, expires={}",
+                    tokens.getUserId(), response.getId(), tokens.getWatchExpiresAt());
+
+        } catch (Exception e) {
+            logger.warn("Failed to register watch channel for userId={}: {}",
+                    tokens.getUserId(), e.getMessage());
+        }
     }
 
     // -------------------------------------------------------------------------
