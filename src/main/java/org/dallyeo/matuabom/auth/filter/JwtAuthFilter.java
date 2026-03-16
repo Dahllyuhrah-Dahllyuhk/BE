@@ -86,7 +86,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
 
-                addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getAccessTokenSeconds());
+                addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getRefreshTokenSeconds());
                 addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
 
                 setAuthentication(request, userId);

@@ -436,17 +436,24 @@ public class MeetingService {
         String oldStatus = meeting.getStatus();
 
         if ("CONFIRMED".equals(newStatus)) {
-            if (request.getConfirmedStart() == null || request.getConfirmedEnd() == null) {
-                throw new IllegalArgumentException("confirmedStart / confirmedEnd is required when status=CONFIRMED");
+            if (request.getConfirmedStart() == null) {
+                throw new IllegalArgumentException("confirmedStart is required when status=CONFIRMED");
             }
             try {
                 Instant start = OffsetDateTime.parse(request.getConfirmedStart()).toInstant();
-                Instant end = OffsetDateTime.parse(request.getConfirmedEnd()).toInstant();
-                if (!end.isAfter(start)) {
-                    throw new IllegalArgumentException("confirmedEnd must be after confirmedStart");
-                }
                 meeting.setConfirmedStart(start);
-                meeting.setConfirmedEnd(end);
+
+                if (request.getConfirmedEnd() != null) {
+                    Instant end = OffsetDateTime.parse(request.getConfirmedEnd()).toInstant();
+                    if (!end.isAfter(start)) {
+                        throw new IllegalArgumentException("confirmedEnd must be after confirmedStart");
+                    }
+                    meeting.setConfirmedEnd(end);
+                } else {
+                    // 종일 설정: 하루 끝으로 설정
+                    meeting.setConfirmedEnd(start.atZone(ZONE_SEOUL).toLocalDate()
+                        .plusDays(1).atStartOfDay(ZONE_SEOUL).toInstant());
+                }
             } catch (DateTimeParseException e) {
                 throw new IllegalArgumentException("Invalid date format for confirmedStart/confirmedEnd", e);
             }
@@ -473,8 +480,15 @@ public class MeetingService {
         Instant end = meeting.getConfirmedEnd();
         if (start == null || end == null) return;
 
-        String startStr = start.atZone(ZONE_SEOUL).toOffsetDateTime().toString();
-        String endStr = end.atZone(ZONE_SEOUL).toOffsetDateTime().toString();
+        ZonedDateTime startZdt = start.atZone(ZONE_SEOUL);
+        ZonedDateTime endZdt = end.atZone(ZONE_SEOUL);
+        String startStr = startZdt.toOffsetDateTime().toString();
+        String endStr = endZdt.toOffsetDateTime().toString();
+
+        // 종일 여부: 시작이 자정이고 종료가 다음날 자정인 경우
+        boolean isAllDay = startZdt.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)
+            && endZdt.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)
+            && !startZdt.toLocalDate().equals(endZdt.toLocalDate());
 
         for (MeetingParticipant participant : meeting.getParticipants()) {
             if (!"ACCEPTED".equals(participant.getStatus())) continue;
@@ -486,7 +500,7 @@ public class MeetingService {
             req.setDescription(null);
             req.setStart(startStr);
             req.setEnd(endStr);
-            req.setAllDay(false);
+            req.setAllDay(isAllDay);
             req.setTimeZone(ZONE_SEOUL.getId());
             req.setColor(null);
 
@@ -553,6 +567,8 @@ public class MeetingService {
         newParticipant.setReflectCalendar(true);
 
         meeting.getParticipants().add(newParticipant);
+        // 초대코드 참여 시에도 캘린더/시간표 반영
+        recalculateParticipantSchedules(newParticipant, meeting.getRequirement());
         return meetingRepository.save(meeting);
     }
 

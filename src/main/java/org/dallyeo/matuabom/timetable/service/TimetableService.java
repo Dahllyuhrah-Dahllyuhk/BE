@@ -98,7 +98,7 @@ public class TimetableService {
         validateTimeRange(newStart, newEnd);
         checkOverlap(timetable.getItems(), dto.getDay(), newStart, newEnd, itemId);
 
-        target.setTitle(dto.getStartTime());
+        target.setTitle(dto.getTitle());
         target.setDay(dto.getDay());
         target.setStartTime(dto.getStartTime());
         target.setEndTime(dto.getEndTime());
