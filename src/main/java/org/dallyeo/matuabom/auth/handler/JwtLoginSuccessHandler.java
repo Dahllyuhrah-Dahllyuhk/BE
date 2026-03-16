@@ -9,6 +9,7 @@ import org.dallyeo.matuabom.auth.dto.KakaoUserInfo;
 import org.dallyeo.matuabom.auth.dto.UpsertKakaoUserDto;
 import org.dallyeo.matuabom.auth.service.TokenStore;
 import org.dallyeo.matuabom.auth.service.GoogleOAuthClientService;
+import org.dallyeo.matuabom.calendar.service.GoogleCalendarService;
 import org.dallyeo.matuabom.calendar.service.GoogleSyncService;
 import org.dallyeo.matuabom.user.service.UserService;
 import org.dallyeo.matuabom.global.util.JwtUtil;
@@ -44,6 +45,7 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
     private final OAuth2AuthorizedClientService oAuth2AuthorizedClientService;
     private final JwtUtil jwtUtil;
     private final GoogleSyncService googleSyncService;
+    private final GoogleCalendarService googleCalendarService;
 
     @Override
     public void onAuthenticationSuccess(
@@ -180,6 +182,11 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
                 oAuth2AuthorizedClientService.loadAuthorizedClient("google", oauthToken.getName());
 
         googleOAuthClientService.saveTokens(userId, googleEmail, googleClient);
+
+        // 웹훅 채널 등록 (없거나 만료된 경우에만)
+        googleOAuthClientService.getTokens(userId).ifPresent(tokens ->
+                googleCalendarService.ensureWatchChannel(tokens)
+        );
 
         // 증분 동기화 실행
         googleSyncService.runIncrementalSync(userId);

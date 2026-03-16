@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -44,6 +45,19 @@ public class FriendController {
     ) {
         friendService.deleteFriend(principal.getUserId(), friendId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/add-by-user")
+    public ResponseEntity<?> addByUserId(
+            @AuthenticationPrincipal CustomPrincipal principal,
+            @RequestBody Map<String, String> body
+    ) {
+        String targetUserId = body.get("userId");
+        if (targetUserId == null || targetUserId.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UserEntity friend = friendService.addFriendByUserId(principal.getUserId(), targetUserId);
+        return ResponseEntity.ok(FriendDto.create(friend));
     }
 
     @GetMapping

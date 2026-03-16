@@ -69,6 +69,25 @@ public class FriendService {
     }
 
     @Transactional
+    public UserEntity addFriendByUserId(String currentUserId, String targetUserId) {
+        if (currentUserId.equals(targetUserId)) {
+            throw new IllegalStateException("자신과 친구가 될 수 없습니다.");
+        }
+
+        String u1 = currentUserId.compareTo(targetUserId) < 0 ? currentUserId : targetUserId;
+        String u2 = currentUserId.compareTo(targetUserId) < 0 ? targetUserId : currentUserId;
+
+        if (friendJpaRepository.existsByUserId1AndUserId2(u1, u2)) {
+            throw new IllegalStateException("이미 친구입니다.");
+        }
+
+        friendJpaRepository.save(FriendEntity.create(currentUserId, targetUserId));
+
+        return userJpaRepository.findByMongoId(targetUserId)
+                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
+    }
+
+    @Transactional
     public void deleteFriend(String currentUserId, String targetUserId) {
         String u1 = currentUserId.compareTo(targetUserId) < 0 ? currentUserId : targetUserId;
         String u2 = currentUserId.compareTo(targetUserId) < 0 ? targetUserId : currentUserId;
