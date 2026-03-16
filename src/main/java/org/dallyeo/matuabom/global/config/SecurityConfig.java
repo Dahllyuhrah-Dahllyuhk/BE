@@ -55,6 +55,7 @@ public class SecurityConfig {
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/api/google/webhook").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
+                        .requestMatchers("/api/sse/events").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )

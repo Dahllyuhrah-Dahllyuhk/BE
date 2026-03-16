@@ -209,6 +209,9 @@ public class AvailableTimeCalculator {
     /**
      * 모임 시간 제약 조건(timeConstraints)을 기반으로 허용 시간 외 영역을 FixedSchedule로 생성
      * isAllDay=true이거나 제약 없으면 하루 전체를 허용 (빈 리스트 반환)
+     *
+     * 예: timeConstraints = [9:00~18:00] 이면
+     * → 00:00~09:00, 18:00~24:00 를 불가능으로 마킹
      */
     private List<FixedSchedule> generateConstraintSchedules(
         List<LocalDate> candidateDates,
@@ -220,22 +223,39 @@ public class AvailableTimeCalculator {
             return Collections.emptyList();
         }
 
+        // 허용 시간대들을 정렬
+        List<TimeRange> sorted = requirement.getTimeConstraints().stream()
+            .sorted(Comparator.comparing(TimeRange::getStartTime))
+            .collect(Collectors.toList());
+
         List<FixedSchedule> schedules = new ArrayList<>();
+
         for (LocalDate date : candidateDates) {
-            for (TimeRange range : requirement.getTimeConstraints()) {
-                ZonedDateTime start = ZonedDateTime.of(date, range.getStartTime(), ZONE_SEOUL);
-                ZonedDateTime end = ZonedDateTime.of(date, range.getEndTime(), ZONE_SEOUL);
-
-                // 자정을 넘기는 시간 범위 처리 (예: 22:00 ~ 02:00)
-                if (range.getEndTime().isBefore(range.getStartTime())
-                    || range.getEndTime().equals(range.getStartTime())) {
-                    end = end.plusDays(1);
+            // 00:00부터 첫 허용시작까지 → 불가능
+            LocalTime dayStart = LocalTime.MIDNIGHT;
+            for (TimeRange range : sorted) {
+                if (dayStart.isBefore(range.getStartTime())) {
+                    schedules.add(new FixedSchedule(
+                        ZonedDateTime.of(date, dayStart, ZONE_SEOUL),
+                        ZonedDateTime.of(date, range.getStartTime(), ZONE_SEOUL),
+                        false
+                    ));
                 }
-
-                schedules.add(new FixedSchedule(start, end, false));
+                // 허용 범위 끝 이후부터 다음 허용 시작까지도 불가능
+                dayStart = range.getEndTime().isAfter(dayStart) ? range.getEndTime() : dayStart;
+            }
+            // 마지막 허용 끝 ~ 자정 → 불가능
+            LocalTime dayEnd = LocalTime.of(23, 59, 59);
+            if (dayStart.isBefore(dayEnd)) {
+                schedules.add(new FixedSchedule(
+                    ZonedDateTime.of(date, dayStart, ZONE_SEOUL),
+                    ZonedDateTime.of(date, LocalTime.MIDNIGHT, ZONE_SEOUL).plusDays(1),
+                    false
+                ));
             }
         }
-        return mergeFixedSchedules(schedules);
+
+        return schedules;
     }
 
     /**

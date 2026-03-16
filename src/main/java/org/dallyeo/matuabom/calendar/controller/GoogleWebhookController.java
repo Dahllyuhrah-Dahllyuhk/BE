@@ -20,9 +20,12 @@ public class GoogleWebhookController {
     @PostMapping("/webhook")
     public ResponseEntity<Void> handleWebhook(HttpServletRequest request) {
         String channelId  = request.getHeader("X-Goog-Channel-ID");
-        String resourceId = request.getHeader("X-Goog-Resource-ID");
         String state      = request.getHeader("X-Goog-Resource-State");
-        String token      = request.getHeader("X-Goog-Channel-Token");
+
+        // 최초 채널 등록 확인 알림 — 동기화 불필요
+        if ("sync".equals(state)) {
+            return ResponseEntity.noContent().build();
+        }
 
         googleTokens.findByChannelId(channelId).ifPresent(tokens -> {
             String userId = tokens.getUserId();

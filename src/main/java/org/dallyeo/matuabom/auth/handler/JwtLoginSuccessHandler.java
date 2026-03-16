@@ -107,7 +107,7 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .sameSite(cookieSecure ? "None" : "Lax")
-                .maxAge(Duration.ofSeconds(jwtUtil.getAccessTokenSeconds()))
+                .maxAge(Duration.ofSeconds(jwtUtil.getRefreshTokenSeconds()))
                 .build();
 
         ResponseCookie refreshCookie = ResponseCookie.from("REFRESH_TOKEN", refreshToken)
