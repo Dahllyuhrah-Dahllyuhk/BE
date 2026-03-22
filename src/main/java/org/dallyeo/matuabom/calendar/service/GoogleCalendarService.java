@@ -1,6 +1,5 @@
 package org.dallyeo.matuabom.calendar.service;
 
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.DateTime;
@@ -8,6 +7,7 @@ import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.calendar.dto.CalendarEventDto;
@@ -36,7 +36,9 @@ public class GoogleCalendarService {
 
     private final CalendarEventRepository repository;
     private final GoogleOAuthClientService googleOAuthClientService;
+    private final NetHttpTransport httpTransport;
 
+    // HTTP Transport — GoogleApiConfig에서 Bean으로 주입 (싱글턴 보장)
     private static final Logger logger = LoggerFactory.getLogger(GoogleCalendarService.class);
 
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Seoul");
@@ -46,6 +48,9 @@ public class GoogleCalendarService {
 
     @Value("${app.backend-base-url:http://localhost:8080}")
     private String backendBaseUrl;
+
+    @Value("${app.google-webhook-token:}")
+    private String googleWebhookToken;
 
     // -------------------------------------------------------------------------
     // SyncResult
@@ -95,7 +100,6 @@ public class GoogleCalendarService {
     private Calendar buildCalendarClient(GoogleOAuthClientEntity tokens)
             throws GeneralSecurityException, IOException {
 
-        var http = GoogleNetHttpTransport.newTrustedTransport();
         var json = GsonFactory.getDefaultInstance();
         String accessToken = googleOAuthClientService.refreshAccessTokenIfExpired(tokens.getUserId());
 
@@ -105,7 +109,7 @@ public class GoogleCalendarService {
                         ? accessToken.substring(0, 10) : "null");
 
         return new Calendar.Builder(
-                http, json,
+                httpTransport, json,
                 req -> req.getHeaders().setAuthorization("Bearer " + accessToken)
         ).setApplicationName("Matuabom Calendar Integration").build();
     }
@@ -604,6 +608,11 @@ public class GoogleCalendarService {
                     .setType("web_hook")
                     .setAddress(backendBaseUrl + "/api/google/webhook")
                     .setExpiration(expiresMs);
+
+            // Webhook 검증용 토큰 설정 (GoogleWebhookController에서 검증)
+            if (googleWebhookToken != null && !googleWebhookToken.isBlank()) {
+                watchBody.setToken(googleWebhookToken);
+            }
 
             Channel response = service.events().watch("primary", watchBody).execute();
 

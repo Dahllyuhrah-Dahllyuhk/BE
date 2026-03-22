@@ -2,8 +2,13 @@ package org.dallyeo.matuabom;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {
+    MongoRepositoriesAutoConfiguration.class,
+    JpaRepositoriesAutoConfiguration.class
+})
 public class MatuabomApplication {
 
     public static void main(String[] args) {

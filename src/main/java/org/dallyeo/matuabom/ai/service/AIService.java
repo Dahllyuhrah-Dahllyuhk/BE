@@ -7,8 +7,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.security.SecureRandom;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.meeting.domain.Meeting;
 import org.dallyeo.matuabom.calendar.dto.CalendarEventDto;
 import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
@@ -30,6 +31,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AIService {
@@ -40,7 +42,7 @@ public class AIService {
     private final CalendarEventService calendarEventService;
 
     List<String> options = List.of("bg-blue-500", "bg-purple-500", "bg-green-500", "bg-orange-500", "bg-pink-500");
-    Random random = new Random();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     public ResponseEntity<AIServerResponse> call(AIRequestDTO requestDTO)
         throws GeneralSecurityException, IOException {
@@ -89,7 +91,7 @@ public class AIService {
             try {
                 summary = fetchSummaryFromAI(category, resultData);
             } catch (Exception e) {
-                System.err.println("요약 생성 실패: " + e.getMessage());
+                log.warn("요약 생성 실패: {}", e.getMessage());
             }
         }
 
@@ -187,7 +189,7 @@ public class AIService {
             createEventReq.setEnd(data.getEnd());
 
             if (options != null && !options.isEmpty()) {
-                createEventReq.setColor(options.get(random.nextInt(options.size())));
+                createEventReq.setColor(options.get(SECURE_RANDOM.nextInt(options.size())));
             }
             return calendarEventService.create(createEventReq);
         }

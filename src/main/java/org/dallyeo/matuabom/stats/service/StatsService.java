@@ -11,12 +11,14 @@ import org.dallyeo.matuabom.stats.dto.TimeSlotStatDto;
 import org.dallyeo.matuabom.stats.dto.TopPartnerDto;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.*;
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class StatsService {
 
     private final MeetingRepository meetingRepository;
@@ -61,12 +63,16 @@ public class StatsService {
     }
 
     public List<TopPartnerDto> getTopPartners(String userId, int limit) {
+        return getTopPartners(userId, limit, Instant.now());
+    }
+
+    public List<TopPartnerDto> getTopPartners(String userId, int limit, Instant now) {
         List<Meeting> meetings = meetingRepository.findByStatusOrStatusAndParticipantsUserId("CONFIRMED", "CLOSED", userId);
         Map<String, PartnerCounter> countingMap = new HashMap<>();
 
         for (Meeting meeting : meetings) {
             if (meeting.getParticipants() == null || meeting.getConfirmedStart() == null) continue;
-            if (meeting.getConfirmedStart().isAfter(Instant.now())) continue;
+            if (meeting.getConfirmedStart().isAfter(now)) continue;
             if (!isAccepted(meeting, userId)) continue;
 
             for (MeetingParticipant participant : meeting.getParticipants()) {

@@ -1,8 +1,10 @@
 package org.dallyeo.matuabom.auth.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.calendar.repository.GoogleOAuthClientRepository;
+import org.dallyeo.matuabom.sse.service.EventSseService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.stereotype.Service;
@@ -17,10 +19,12 @@ import java.time.Instant;
 import java.util.Optional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class GoogleOAuthClientService {
 
     private final GoogleOAuthClientRepository repo;
+    private final EventSseService eventSseService;
 
     @Value("${spring.security.oauth2.client.registration.google.client-id}")
     private String clientId;
@@ -94,7 +98,9 @@ public class GoogleOAuthClientService {
                     clientSecret
             ).execute();
         } catch (Exception e) {
-            // invalid_grant 등 refresh 불가능한 상태
+            // invalid_grant 등 refresh 불가능한 상태 — 사용자에게 재연동 요청 알림
+            log.warn("Google token refresh failed for userId={}: {}", userId, e.getMessage());
+            eventSseService.sendGoogleReauthRequired(userId);
             throw new IllegalStateException("GOOGLE_REFRESH_FAILED", e);
         }
 

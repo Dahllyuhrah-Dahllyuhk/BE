@@ -36,7 +36,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update          # 운영: validate / 개발 초기: update
+      ddl-auto: ${DDL_AUTO:update}   # dev: update / prod: validate (application-prod.yml에서 override)
     show-sql: false
     properties:
       hibernate:
@@ -68,7 +68,6 @@ spring:
             scope:
               - profile_nickname
               - profile_image
-              - friends
             client-authentication-method: client_secret_post
             provider: kakao
 
@@ -96,6 +95,8 @@ app:
   backend-base-url: ${BACKEND_BASE_URL:http://localhost:8080}
   cookie-secure: ${COOKIE_SECURE:false}
   admin-secret: ${ADMIN_SECRET:admin1234}
+  encrypt-key: ${ENCRYPT_KEY:}  # 누락 시 AesEncryptor 내부 개발용 기본키 사용 (운영은 반드시 설정)
+  google-webhook-token: ${GOOGLE_WEBHOOK_TOKEN:}
   jwt:
     access-token-seconds: 7200        # 2시간
     refresh-token-seconds: 2592000    # 30일
@@ -116,3 +117,9 @@ management:
       enabled: true
     readinessState:
       enabled: true
+    db:
+      enabled: true     # PostgreSQL 연결 확인
+    mongo:
+      enabled: true     # MongoDB 연결 확인
+    redis:
+      enabled: true     # Redis 연결 확인

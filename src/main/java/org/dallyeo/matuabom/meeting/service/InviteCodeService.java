@@ -30,11 +30,13 @@ public class InviteCodeService {
     }
 
     private String generateUniqueCode(int length) {
-        while (true) {
+        int maxAttempts = 10;
+        for (int i = 0; i < maxAttempts; i++) {
             String code = inviteCodeGenerator.generateRandomCode(length);
             if (!inviteCodeJpaRepository.existsByCode(code)) {
                 return code;
             }
         }
+        throw new IllegalStateException("초대코드 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
 }

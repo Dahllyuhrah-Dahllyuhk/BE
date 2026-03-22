@@ -16,4 +16,6 @@ public interface FriendJpaRepository extends JpaRepository<FriendEntity, Long> {
     List<FriendEntity> findAllByUserId(@Param("userId") String userId);
 
     Optional<FriendEntity> findByUserId1AndUserId2(String userId1, String userId2);
+
+    void deleteAllByUserId1OrUserId2(String userId1, String userId2);
 }

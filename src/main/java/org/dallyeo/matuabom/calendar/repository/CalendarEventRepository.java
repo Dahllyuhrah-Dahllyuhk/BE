@@ -31,4 +31,7 @@ public interface CalendarEventRepository extends MongoRepository<CalendarEventDt
     List<CalendarEventDto> findByMeetingId(String meetingId);
 
     void deleteByMeetingId(String meetingId);
+
+    List<CalendarEventDto> findByUserIdInAndStartTimestampLessThanAndEndTimestampGreaterThan(
+            List<String> userIds, Long endTs, Long startTs);
 }

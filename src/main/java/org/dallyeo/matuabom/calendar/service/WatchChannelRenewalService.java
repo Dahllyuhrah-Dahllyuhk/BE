@@ -28,19 +28,22 @@ public class WatchChannelRenewalService {
         List<GoogleOAuthClientEntity> candidates = repo.findAll().stream()
                 .filter(e -> e.getRefreshToken() != null) // Google 연동 사용자만
                 .filter(e -> {
-                    // watchExpiresAt이 null이면 아직 채널 등록 자체가 안 된 것 → 등록 대상
-                    // watchExpiresAt이 24시간 이내 만료 예정 → 갱신 대상
-                    return e.getWatchExpiresAt() == null || e.getWatchExpiresAt().isBefore(threshold);
+                    // watchExpiresAt이 null: 채널이 한 번도 등록된 적 없음
+                    //   → watchChannelId도 null인 경우만 등록 대상으로 포함
+                    //     (watchChannelId가 있으면 이전에 등록했다가 만료된 케이스)
+                    if (e.getWatchExpiresAt() == null) {
+                        return e.getWatchChannelId() == null; // 최초 등록 대상만
+                    }
+                    // 24시간 이내 만료 예정 → 갱신 대상
+                    return e.getWatchExpiresAt().isBefore(threshold);
                 })
                 .toList();
 
-        log.info("WatchChannel renewal: {} channels to renew", candidates.size());
+        log.info("WatchChannel renewal: {} channels to process", candidates.size());
         for (GoogleOAuthClientEntity tokens : candidates) {
             try {
-                // watchExpiresAt을 null로 설정하면 ensureWatchChannel이 강제 재등록
-                tokens.setWatchExpiresAt(null);
                 googleCalendarService.ensureWatchChannel(tokens);
-                log.info("Watch channel renewed for userId={}", tokens.getUserId());
+                log.info("Watch channel processed for userId={}", tokens.getUserId());
             } catch (Exception e) {
                 log.warn("Watch channel renewal failed for userId={}: {}", tokens.getUserId(), e.getMessage());
             }

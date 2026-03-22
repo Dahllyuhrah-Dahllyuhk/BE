@@ -46,8 +46,18 @@ public class MeetingController {
     }
 
     @GetMapping("/{meetingId}")
-    public ResponseEntity<Meeting> getMeetingDetail(@PathVariable String meetingId) {
+    public ResponseEntity<Meeting> getMeetingDetail(
+        @PathVariable String meetingId,
+        @AuthenticationPrincipal CustomPrincipal principal
+    ) {
         Meeting meeting = meetingService.findById(meetingId);
+        String userId = principal.getUserId();
+        boolean isParticipant = meeting.getParticipants().stream()
+                .anyMatch(p -> userId.equals(p.getUserId()));
+        boolean isHost = userId.equals(meeting.getHostUserId());
+        if (!isParticipant && !isHost) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(meeting);
     }
 
@@ -133,15 +143,27 @@ public class MeetingController {
     // -------------------------------------------------------------------------
 
     @GetMapping("/{meetingId}/available-slots")
-    public ResponseEntity<List<AvailableSlot>> getAvailableSlots(@PathVariable String meetingId) {
-        List<AvailableSlot> slots = meetingService.getFinalAvailableSlots(meetingId);
-        return ResponseEntity.ok(slots);
+    public ResponseEntity<List<AvailableSlot>> getAvailableSlots(
+        @PathVariable String meetingId,
+        @AuthenticationPrincipal CustomPrincipal principal
+    ) {
+        Meeting meeting = meetingService.findById(meetingId);
+        if (!meetingService.isParticipantOrHost(meeting, principal.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(meetingService.getFinalAvailableSlots(meetingId));
     }
 
     @GetMapping("/{meetingId}/daily-availability")
-    public ResponseEntity<Map<String, DailyCountDto>> getDailyAvailability(@PathVariable String meetingId) {
-        Map<String, DailyCountDto> dailyCounts = meetingService.getDailyAvailability(meetingId);
-        return ResponseEntity.ok(dailyCounts);
+    public ResponseEntity<Map<String, DailyCountDto>> getDailyAvailability(
+        @PathVariable String meetingId,
+        @AuthenticationPrincipal CustomPrincipal principal
+    ) {
+        Meeting meeting = meetingService.findById(meetingId);
+        if (!meetingService.isParticipantOrHost(meeting, principal.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(meetingService.getDailyAvailability(meetingId));
     }
 
     // -------------------------------------------------------------------------
@@ -165,13 +187,9 @@ public class MeetingController {
     @PostMapping("/join")
     public ResponseEntity<Meeting> joinByInviteCode(
         @AuthenticationPrincipal CustomPrincipal principal,
-        @RequestBody Map<String, String> body
+        @Valid @RequestBody JoinByInviteCodeRequest body
     ) {
-        String inviteCode = body.get("inviteCode");
-        if (inviteCode == null || inviteCode.isBlank()) {
-            return ResponseEntity.badRequest().build();
-        }
-        Meeting meeting = meetingService.joinByInviteCode(principal.getUserId(), inviteCode.trim());
+        Meeting meeting = meetingService.joinByInviteCode(principal.getUserId(), body.getInviteCode().trim());
         return ResponseEntity.ok(meeting);
     }
 
