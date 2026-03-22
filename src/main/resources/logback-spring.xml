@@ -1,32 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <!-- 콘솔 appender -->
+    <!-- 콘솔 appender (항상 활성) -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
-    </appender>
-
-    <!-- 파일 appender (날짜별 로테이션) -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/app/logs/matuabom.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>/app/logs/matuabom.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
-            <maxFileSize>50MB</maxFileSize>
-            <maxHistory>30</maxHistory>
-            <totalSizeCap>2GB</totalSizeCap>
-        </rollingPolicy>
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
-
-    <!-- 비동기 파일 appender (I/O 블로킹 방지) -->
-    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
-        <queueSize>512</queueSize>
-        <discardingThreshold>0</discardingThreshold>
-        <appender-ref ref="FILE"/>
     </appender>
 
     <!-- 개발 환경 -->
@@ -38,15 +17,35 @@
         <logger name="org.springframework.security" level="DEBUG"/>
     </springProfile>
 
-    <!-- 운영 환경 -->
+    <!-- 운영 환경 — 파일 appender는 prod에서만 초기화 -->
     <springProfile name="prod">
+
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>/app/logs/matuabom.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>/app/logs/matuabom.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>30</maxHistory>
+                <totalSizeCap>2GB</totalSizeCap>
+            </rollingPolicy>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+            <queueSize>512</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <appender-ref ref="FILE"/>
+        </appender>
+
         <root level="WARN">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="ASYNC_FILE"/>
         </root>
         <logger name="org.dallyeo.matuabom" level="INFO"/>
-        <!-- 민감 정보 노출 방지: security 로그 WARN 이상만 -->
         <logger name="org.springframework.security" level="WARN"/>
+
     </springProfile>
 
     <!-- 기본 (프로파일 미지정) -->
