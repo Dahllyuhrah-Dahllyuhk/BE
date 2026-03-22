@@ -20,6 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.dallyeo.matuabom.user.service.UserWithdrawalService;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,6 +37,7 @@ public class AuthController {
     private final UserJpaRepository userRepository;
     private final TokenStore tokenStore;
     private final JwtUtil jwtUtil;
+    private final UserWithdrawalService userWithdrawalService;
 
     @Value("${app.cookie-secure:false}")
     private boolean cookieSecure;
@@ -59,7 +62,7 @@ public class AuthController {
         String accessToken = extractCookie(request, "ACCESS_TOKEN");
         if (accessToken != null) {
             try {
-                tokenStore.blacklistAccessToken(accessToken, jwtUtil.getExpiration(accessToken));
+                tokenStore.blacklistAccessToken(jwtUtil.getJti(accessToken), jwtUtil.getExpiration(accessToken));
             } catch (Exception e) {
                 log.warn("Failed to blacklist access token: {}", e.getMessage());
             }
@@ -82,7 +85,32 @@ public class AuthController {
         return ResponseEntity.ok().build();
     }
 
-    // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+    @DeleteMapping("/api/auth/me")
+    public ResponseEntity<Void> withdraw(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            @AuthenticationPrincipal CustomPrincipal principal
+    ) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        String accessToken = extractCookie(request, "ACCESS_TOKEN");
+
+        userWithdrawalService.withdraw(principal.getUserId(), accessToken);
+
+        // 쿠키 삭제
+        expireCookie(response, "ACCESS_TOKEN");
+        expireCookie(response, "REFRESH_TOKEN");
+
+        SecurityContextHolder.clearContext();
+        HttpSession session = request.getSession(false);
+        if (session != null) session.invalidate();
+
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── 내부 헬퍼 ──────────────────────────────────────────────────────────────
 
     private String extractCookie(HttpServletRequest request, String name) {
         if (request.getCookies() == null) return null;

@@ -1,6 +1,7 @@
 package org.dallyeo.matuabom.calendar.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.calendar.dto.CalendarEventDto;
 import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
@@ -16,7 +17,9 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CalendarEventService {
@@ -115,7 +118,7 @@ public class CalendarEventService {
                 } catch (GoogleJsonResponseException e) {
                     int status = e.getStatusCode();
                     if (status == 404 || status == 410) {
-                        System.out.println("Google event already deleted. Skip Google delete.");
+                        log.info("Google event already deleted, skipping. eventId={}", eventId);
                     } else {
                         throw new RuntimeException(e);
                     }
@@ -160,7 +163,18 @@ public class CalendarEventService {
                     uid, endTs, startTs
             );
         }
-
         return repository.findByUserIdOrderByStartTimestampAsc(uid);
+    }
+
+    /**
+     * 여러 userId의 이벤트를 한 번의 쿼리로 조회 (N+1 방지).
+     */
+    public Map<String, List<CalendarEventDto>> getEventsByUserIds(
+            List<String> userIds, Long startTs, Long endTs) {
+        if (userIds == null || userIds.isEmpty()) return java.util.Collections.emptyMap();
+        List<CalendarEventDto> all = repository
+                .findByUserIdInAndStartTimestampLessThanAndEndTimestampGreaterThan(
+                        userIds, endTs, startTs);
+        return all.stream().collect(java.util.stream.Collectors.groupingBy(CalendarEventDto::getUserId));
     }
 }

@@ -49,20 +49,34 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // ① Access Token 유효 + 블랙리스트에 없는 경우 → 정상 인증
         if (accessToken != null) {
             try {
-                if (tokenStore.isBlacklisted(accessToken)) {
-                    // 블랙리스트 등록된 토큰 → 인증 거부
+                boolean blacklisted = false;
+                try {
+                    blacklisted = tokenStore.isBlacklisted(jwtUtil.getJti(accessToken));
+                } catch (Exception redisEx) {
+                    log.warn("Redis unavailable during blacklist check, allowing request. path={}", request.getRequestURI());
+                }
+
+                if (blacklisted) {
                     clearContext(response);
                     filterChain.doFilter(request, response);
                     return;
                 }
 
                 String userId = jwtUtil.validateAndGetSub(accessToken);
+
+                // 토큰 타입 검증 — refresh token으로 API 호출 차단
+                if (!"access".equals(jwtUtil.getTokenType(accessToken))) {
+                    log.warn("Non-access token used as access token. path={}", request.getRequestURI());
+                    clearContext(response);
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
                 setAuthentication(request, userId);
                 filterChain.doFilter(request, response);
                 return;
 
             } catch (JwtException e) {
-                // Access Token 만료 → Refresh Token으로 재발급 시도
                 log.debug("Access token expired, trying refresh. path={}", request.getRequestURI());
             }
         }
@@ -72,28 +86,44 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 String userId = jwtUtil.validateAndGetSub(refreshToken);
 
+                // 토큰 타입 검증
+                if (!"refresh".equals(jwtUtil.getTokenType(refreshToken))) {
+                    log.warn("Non-refresh token used as refresh token. path={}", request.getRequestURI());
+                    clearContext(response);
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+
                 if (!tokenStore.isRefreshTokenValid(userId, refreshToken)) {
-                    // Redis에 저장된 토큰과 불일치 → 탈취 가능성, 즉시 거부
                     log.warn("Refresh token mismatch for userId={}. Possible token theft.", userId);
                     clearContext(response);
                     filterChain.doFilter(request, response);
                     return;
                 }
 
-                // Refresh Token Rotation: 새 Access + Refresh 발급
-                String newAccessToken  = jwtUtil.createAccessToken(userId);
-                String newRefreshToken = jwtUtil.createRefreshToken(userId);
+                // 분산 락 획득 — 동시 요청 중 첫 번째만 토큰 갱신
+                if (tokenStore.acquireTokenRefreshLock(userId)) {
+                    try {
+                        String newAccessToken  = jwtUtil.createAccessToken(userId);
+                        String newRefreshToken = jwtUtil.createRefreshToken(userId);
 
-                tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
+                        tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
 
-                addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getRefreshTokenSeconds());
-                addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
+                        addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getRefreshTokenSeconds());
+                        addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
+
+                        log.debug("Token refreshed silently for userId={}", userId);
+                    } finally {
+                        tokenStore.releaseTokenRefreshLock(userId);
+                    }
+                } else {
+                    // 락 획득 실패 — 다른 요청이 이미 갱신 중, 현재 토큰으로 인증만 수행
+                    log.debug("Token refresh lock not acquired for userId={}, skipping rotation", userId);
+                }
 
                 setAuthentication(request, userId);
-                log.debug("Token refreshed silently for userId={}", userId);
 
             } catch (JwtException e) {
-                // Refresh Token도 만료 → 재로그인 필요
                 log.debug("Refresh token also expired. Re-login required.");
                 clearContext(response);
             }

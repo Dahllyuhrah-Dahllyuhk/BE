@@ -12,6 +12,7 @@ import org.dallyeo.matuabom.calendar.service.GoogleCalendarService;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
+import org.dallyeo.matuabom.timetable.domain.TimetableItem;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,8 @@ import java.security.GeneralSecurityException;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -58,11 +61,8 @@ public class MeetingService {
             request.isDefaultReflectCalendar()
         );
 
-        // 호스트의 초기 불가능 슬롯 계산
-        participants.stream()
-            .filter(p -> p.getUserId().equals(hostUserId))
-            .findFirst()
-            .ifPresent(hostParticipant -> recalculateParticipantSchedules(hostParticipant, requirement));
+        // 전체 참여자 일정 배치 재계산 (N+1 방지)
+        recalculateAllParticipantSchedules(participants, requirement);
 
         String inviteCode = generateUniqueInviteCode();
 
@@ -89,6 +89,11 @@ public class MeetingService {
     public Meeting findById(String meetingId) {
         return meetingRepository.findById(meetingId)
             .orElseThrow(() -> new IllegalArgumentException("Meeting not found: " + meetingId));
+    }
+
+    public boolean isParticipantOrHost(Meeting meeting, String userId) {
+        if (userId.equals(meeting.getHostUserId())) return true;
+        return meeting.getParticipants().stream().anyMatch(p -> userId.equals(p.getUserId()));
     }
 
     // -------------------------------------------------------------------------
@@ -171,6 +176,13 @@ public class MeetingService {
             .collect(Collectors.toList());
 
         meeting.setParticipants(updatedParticipants);
+        // 새로 추가된 참여자 일정 배치 재계산
+        List<MeetingParticipant> newParticipants = updatedParticipants.stream()
+            .filter(p -> !oldParticipantMap.containsKey(p.getUserId()))
+            .collect(Collectors.toList());
+        if (!newParticipants.isEmpty()) {
+            recalculateAllParticipantSchedules(newParticipants, newRequirement);
+        }
         return meetingRepository.save(meeting);
     }
 
@@ -255,6 +267,8 @@ public class MeetingService {
         if (!meeting.getHostUserId().equals(hostUserId)) {
             throw new SecurityException("Only the host can delete the meeting.");
         }
+        // 모임에 연결된 CalendarEvent 고아 데이터 정리
+        calendarEventRepository.deleteByMeetingId(meetingId);
         meetingRepository.delete(meeting);
     }
 
@@ -427,9 +441,10 @@ public class MeetingService {
         }
 
         String newStatus = request.getStatus();
-        if (newStatus == null || !(newStatus.equals("PENDING")
-            || newStatus.equals("CONFIRMED")
-            || newStatus.equals("CLOSED"))) {
+        if (newStatus == null || MeetingStatus.from(newStatus) == null ||
+            !(newStatus.equals(MeetingStatus.PENDING.name())
+            || newStatus.equals(MeetingStatus.CONFIRMED.name())
+            || newStatus.equals(MeetingStatus.CLOSED.name()))) {
             throw new IllegalArgumentException("Invalid status: " + newStatus);
         }
 
@@ -450,26 +465,27 @@ public class MeetingService {
                     }
                     meeting.setConfirmedEnd(end);
                 } else {
-                    // 종일 설정: 하루 끝으로 설정
                     meeting.setConfirmedEnd(start.atZone(ZONE_SEOUL).toLocalDate()
                         .plusDays(1).atStartOfDay(ZONE_SEOUL).toInstant());
                 }
             } catch (DateTimeParseException e) {
                 throw new IllegalArgumentException("Invalid date format for confirmedStart/confirmedEnd", e);
             }
-
-            // 처음으로 CONFIRMED 되는 경우에만 캘린더 이벤트 생성
-            if (!"CONFIRMED".equals(oldStatus)) {
-                createConfirmedEventsForParticipants(meeting);
-            }
-
         } else if ("PENDING".equals(newStatus)) {
             meeting.setConfirmedStart(null);
             meeting.setConfirmedEnd(null);
         }
 
+        boolean shouldCreateEvents = "CONFIRMED".equals(newStatus) && !"CONFIRMED".equals(oldStatus);
         meeting.setStatus(newStatus);
-        return meetingRepository.save(meeting);
+        Meeting saved = meetingRepository.save(meeting);
+
+        // 캘린더 이벤트 생성은 트랜잭션 밖에서 실행 (외부 API 호출)
+        if (shouldCreateEvents) {
+            createConfirmedEventsForParticipants(saved);
+        }
+
+        return saved;
     }
 
     /**
@@ -525,15 +541,18 @@ public class MeetingService {
     // 내부 헬퍼
     // -------------------------------------------------------------------------
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private String generateUniqueInviteCode() {
         String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        Random random = new Random();
-        while (true) {
+        int maxAttempts = 10;
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
             StringBuilder sb = new StringBuilder(8);
-            for (int i = 0; i < 8; i++) sb.append(chars.charAt(random.nextInt(chars.length())));
+            for (int i = 0; i < 8; i++) sb.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
             String code = sb.toString();
             if (!meetingRepository.existsByInviteCode(code)) return code;
         }
+        throw new IllegalStateException("초대코드 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
     }
 
     // -------------------------------------------------------------------------
@@ -542,40 +561,88 @@ public class MeetingService {
 
     @Transactional
     public Meeting joinByInviteCode(String userId, String inviteCode) {
-        Meeting meeting = meetingRepository.findByInviteCode(inviteCode.toUpperCase())
-            .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 초대 코드입니다."));
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                Meeting meeting = meetingRepository.findByInviteCode(inviteCode.toUpperCase())
+                    .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 초대 코드입니다."));
 
-        if (!"PENDING".equals(meeting.getStatus())) {
-            throw new IllegalStateException("조율 중인 모임에만 참여할 수 있습니다.");
+                if (!"PENDING".equals(meeting.getStatus())) {
+                    throw new IllegalStateException("조율 중인 모임에만 참여할 수 있습니다.");
+                }
+
+                boolean alreadyJoined = meeting.getParticipants().stream()
+                    .anyMatch(p -> p.getUserId().equals(userId));
+                if (alreadyJoined) {
+                    throw new IllegalStateException("이미 참여한 모임입니다.");
+                }
+
+                UserEntity user = userRepository.findByMongoId(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+
+                MeetingParticipant newParticipant = new MeetingParticipant();
+                newParticipant.setUserId(userId);
+                newParticipant.setName(user.getNickname());
+                newParticipant.setStatus("ACCEPTED");
+                newParticipant.setTimeStatuses(new ArrayList<>());
+                newParticipant.setReflectTimetable(true);
+                newParticipant.setReflectCalendar(true);
+
+                meeting.getParticipants().add(newParticipant);
+                recalculateParticipantSchedules(newParticipant, meeting.getRequirement());
+                return meetingRepository.save(meeting);
+
+            } catch (OptimisticLockingFailureException e) {
+                if (attempt == maxRetries - 1) {
+                    throw new IllegalStateException("모임 참여 중 충돌이 발생했습니다. 다시 시도해주세요.");
+                }
+            }
         }
-
-        boolean alreadyJoined = meeting.getParticipants().stream()
-            .anyMatch(p -> p.getUserId().equals(userId));
-        if (alreadyJoined) {
-            throw new IllegalStateException("이미 참여한 모임입니다.");
-        }
-
-        UserEntity user = userRepository.findByMongoId(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
-
-        MeetingParticipant newParticipant = new MeetingParticipant();
-        newParticipant.setUserId(userId);
-        newParticipant.setName(user.getNickname());
-        newParticipant.setStatus("ACCEPTED");
-        newParticipant.setTimeStatuses(new ArrayList<>());
-        newParticipant.setReflectTimetable(true);
-        newParticipant.setReflectCalendar(true);
-
-        meeting.getParticipants().add(newParticipant);
-        // 초대코드 참여 시에도 캘린더/시간표 반영
-        recalculateParticipantSchedules(newParticipant, meeting.getRequirement());
-        return meetingRepository.save(meeting);
+        throw new IllegalStateException("모임 참여에 실패했습니다.");
     }
 
     private void recalculateParticipantSchedules(MeetingParticipant participant, MeetingRequirement requirement) {
         List<ParticipantTimeStatus> fixedImpossibleStatuses =
             availableTimeCalculator.calculateFixedImpossibleSlots(participant, requirement);
         participant.setTimeStatuses(new ArrayList<>(fixedImpossibleStatuses));
+    }
+
+    /**
+     * 전체 참여자 일정 배치 재계산 — 캘린더/시간표를 userId 묶음으로 한 번씩만 조회하여 N+1 방지.
+     */
+    private void recalculateAllParticipantSchedules(List<MeetingParticipant> participants, MeetingRequirement requirement) {
+        if (participants == null || participants.isEmpty()) return;
+
+        List<LocalDate> candidateDates = availableTimeCalculator.expandDateRange(
+            requirement.getDateRangeStart(), requirement.getDateRangeEnd());
+        long startTs = candidateDates.get(0).atStartOfDay(ZONE_SEOUL).toInstant().toEpochMilli();
+        long endTs = candidateDates.get(candidateDates.size() - 1).plusDays(1).atStartOfDay(ZONE_SEOUL).toInstant().toEpochMilli();
+
+        List<String> calendarUserIds = participants.stream()
+            .filter(MeetingParticipant::isReflectCalendar)
+            .map(MeetingParticipant::getUserId)
+            .distinct()
+            .collect(Collectors.toList());
+
+        // 캘린더 이벤트 배치 조회 (N+1 방지)
+        Map<String, List<CalendarEventDto>> calendarMap = calendarUserIds.isEmpty()
+            ? Collections.emptyMap()
+            : calendarEventRepository
+                .findByUserIdInAndStartTimestampLessThanAndEndTimestampGreaterThan(calendarUserIds, endTs, startTs)
+                .stream()
+                .collect(Collectors.groupingBy(CalendarEventDto::getUserId));
+
+        for (MeetingParticipant participant : participants) {
+            List<CalendarEventDto> events = participant.isReflectCalendar()
+                ? calendarMap.getOrDefault(participant.getUserId(), Collections.emptyList())
+                : null;
+            // 시간표는 개인별 조회 (배치 미지원) — 향후 최적화 가능
+            List<TimetableItem> timetableItems = null;
+
+            List<ParticipantTimeStatus> fixed =
+                availableTimeCalculator.calculateFixedImpossibleSlots(participant, requirement, events, timetableItems);
+            participant.setTimeStatuses(new ArrayList<>(fixed));
+        }
     }
 
     private boolean isParticipantAvailableOnDate(MeetingParticipant participant, LocalDate date) {

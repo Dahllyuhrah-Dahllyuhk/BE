@@ -84,6 +84,26 @@ public class EventSseService {
         dead.forEach(e -> removeEmitter(userId, e));
     }
 
+    /**
+     * Google OAuth 토큰 갱신 실패 시 사용자에게 재연동 요청 알림.
+     */
+    public void sendGoogleReauthRequired(String userId) {
+        List<SseEmitter> emitters = userEmitters.getOrDefault(userId, List.of());
+        if (emitters.isEmpty()) {
+            log.warn("Google reauth required for userId={} but no SSE connection", userId);
+            return;
+        }
+        List<SseEmitter> dead = new ArrayList<>();
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.send(SseEmitter.event().name("google-reauth-required").data("ok"));
+            } catch (IOException e) {
+                dead.add(emitter);
+            }
+        }
+        dead.forEach(e -> removeEmitter(userId, e));
+    }
+
     private void removeEmitter(String userId, SseEmitter emitter) {
         List<SseEmitter> list = userEmitters.get(userId);
         if (list != null) {

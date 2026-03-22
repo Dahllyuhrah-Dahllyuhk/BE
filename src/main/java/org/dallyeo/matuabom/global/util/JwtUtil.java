@@ -82,6 +82,13 @@ public class JwtUtil {
         return parseClaims(jwt).getExpiration().toInstant();
     }
 
+    /**
+     * JWT ID (jti) 반환 — 블랙리스트 Redis 키로 사용.
+     */
+    public String getJti(String jwt) {
+        return parseClaims(jwt).getId();
+    }
+
     // ── 내부 ──────────────────────────────────────────────────────────────────
 
     private String build(String userId, String type, long ttlSeconds) {
@@ -89,6 +96,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(userId)
                 .claim("type", type)
+                .id(java.util.UUID.randomUUID().toString())  // jti — 블랙리스트 키로 사용
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
                 .signWith(key)

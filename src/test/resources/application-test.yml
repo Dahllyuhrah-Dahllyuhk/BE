@@ -1,0 +1,48 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/matuabom_test
+      database: matuabom_test
+    redis:
+      host: localhost
+      port: 6379
+      password:
+
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+JWT_SECRET: test-secret-key-minimum-32-characters-long
+ENCRYPT_KEY:
+
+app:
+  jwt:
+    access-token-seconds: 3600
+    refresh-token-seconds: 86400
+  cookie-secure: false
+  encrypt-key:
+  google-webhook-token:
+  frontend-base-url: http://localhost:3000
+  backend-base-url: http://localhost:8080
+  admin-secret: test-admin
+
+GOOGLE_CLIENT_ID: test-google-client-id
+GOOGLE_CLIENT_SECRET: test-google-client-secret
+KAKAO_CLIENT_ID: test-kakao-client-id
+KAKAO_CLIENT_SECRET: test-kakao-client-secret
+GEMINI_API_KEY: test-gemini-key
+
+logging:
+  level:
+    root: WARN
+    org.dallyeo.matuabom: INFO

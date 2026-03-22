@@ -124,6 +124,18 @@ public class AvailableTimeCalculator {
         MeetingParticipant participant,
         MeetingRequirement requirement
     ) {
+        return calculateFixedImpossibleSlots(participant, requirement, null, null);
+    }
+
+    /**
+     * 배치 처리용 오버로드 — 미리 조회한 캘린더/시간표 데이터를 파라미터로 받아 N+1 방지.
+     */
+    public List<ParticipantTimeStatus> calculateFixedImpossibleSlots(
+        MeetingParticipant participant,
+        MeetingRequirement requirement,
+        List<CalendarEventDto> preloadedCalendarEvents,
+        List<TimetableItem> preloadedTimetableItems
+    ) {
         String userId = participant.getUserId();
         boolean reflectCalendar = participant.isReflectCalendar();
         boolean reflectTimetable = participant.isReflectTimetable();
@@ -139,17 +151,24 @@ public class AvailableTimeCalculator {
 
         Map<LocalDate, Set<Integer>> impossibleSlotsMap = new HashMap<>();
 
-        // 제약 조건(시간대 범위) 밖의 슬롯을 먼저 불가능으로 마킹
         generateConstraintSchedules(candidateDates, requirement)
             .forEach(fs -> mapFixedScheduleToSlots(fs, impossibleSlotsMap));
 
         if (reflectCalendar) {
-            fetchAndNormalizeCalendarSchedules(userId, candidateDates)
+            List<CalendarEventDto> events = preloadedCalendarEvents != null
+                ? preloadedCalendarEvents
+                : calendarEventService.getEventsByUserId(userId,
+                    candidateDates.get(0).atStartOfDay(ZONE_SEOUL).toInstant().toEpochMilli(),
+                    candidateDates.get(candidateDates.size() - 1).plusDays(1).atStartOfDay(ZONE_SEOUL).toInstant().toEpochMilli());
+            normalizeCalendarSchedules(events, candidateDates)
                 .forEach(fs -> mapFixedScheduleToSlots(fs, impossibleSlotsMap));
         }
 
         if (reflectTimetable) {
-            fetchAndNormalizeTimetableSchedules(userId, candidateDates)
+            List<TimetableItem> items = preloadedTimetableItems != null
+                ? preloadedTimetableItems
+                : timetableService.getTimetableItems(userId);
+            normalizeTimetableSchedules(items, candidateDates)
                 .forEach(fs -> mapFixedScheduleToSlots(fs, impossibleSlotsMap));
         }
 
@@ -267,11 +286,17 @@ public class AvailableTimeCalculator {
     ) {
         LocalDate start = candidateDates.get(0);
         LocalDate end = candidateDates.get(candidateDates.size() - 1);
-
         long startTs = start.atStartOfDay(ZONE_SEOUL).toInstant().toEpochMilli();
         long endTs = end.plusDays(1).atStartOfDay(ZONE_SEOUL).toInstant().toEpochMilli();
-
         List<CalendarEventDto> events = calendarEventService.getEventsByUserId(userId, startTs, endTs);
+        return normalizeCalendarSchedules(events, candidateDates);
+    }
+
+    private List<FixedSchedule> normalizeCalendarSchedules(
+        List<CalendarEventDto> events,
+        List<LocalDate> candidateDates
+    ) {
+        LocalDate end = candidateDates.get(candidateDates.size() - 1);
         List<FixedSchedule> schedules = new ArrayList<>();
 
         for (CalendarEventDto event : events) {
@@ -315,6 +340,13 @@ public class AvailableTimeCalculator {
         List<LocalDate> candidateDates
     ) {
         List<TimetableItem> timetableItems = timetableService.getTimetableItems(userId);
+        return normalizeTimetableSchedules(timetableItems, candidateDates);
+    }
+
+    private List<FixedSchedule> normalizeTimetableSchedules(
+        List<TimetableItem> timetableItems,
+        List<LocalDate> candidateDates
+    ) {
         List<FixedSchedule> fixedSchedules = new ArrayList<>();
 
         for (TimetableItem item : timetableItems) {

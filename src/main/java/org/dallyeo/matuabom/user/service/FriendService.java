@@ -96,5 +96,9 @@ public class FriendService {
                 .orElseThrow(() -> new IllegalArgumentException("친구가 아닙니다."));
 
         friendJpaRepository.delete(relation);
+
+        // [정책] 친구 삭제 시 기존 모임의 MeetingParticipant 데이터는 유지됩니다.
+        // 이미 확정(CONFIRMED)되거나 진행 중인 모임의 참여 이력을 보존하는 것이 의도된 동작입니다.
+        // 모임에서도 해당 사용자를 제거하려면 모임 호스트가 직접 모임을 수정해야 합니다.
     }
 }

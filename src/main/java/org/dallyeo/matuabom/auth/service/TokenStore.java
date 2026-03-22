@@ -21,6 +21,7 @@ public class TokenStore {
     private static final String PREFIX_REFRESH    = "refresh:";
     private static final String PREFIX_BLACKLIST  = "blacklist:";
     private static final String PREFIX_INVITE     = "invite:";
+    private static final String PREFIX_TOKEN_LOCK = "token_refresh_lock:";
 
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -43,22 +44,38 @@ public class TokenStore {
         redisTemplate.delete(PREFIX_REFRESH + userId);
     }
 
+    // ── Token Refresh 분산 락 ──────────────────────────────────────────────────
+
+    /**
+     * Refresh Token 갱신 락 획득 (SET NX, TTL 5초).
+     * 동시에 여러 요청이 들어올 때 첫 번째 요청만 갱신 수행.
+     */
+    public boolean acquireTokenRefreshLock(String userId) {
+        Boolean acquired = redisTemplate.opsForValue()
+                .setIfAbsent(PREFIX_TOKEN_LOCK + userId, "1", Duration.ofSeconds(5));
+        return Boolean.TRUE.equals(acquired);
+    }
+
+    public void releaseTokenRefreshLock(String userId) {
+        redisTemplate.delete(PREFIX_TOKEN_LOCK + userId);
+    }
+
     // ── Access Token 블랙리스트 ────────────────────────────────────────────────
 
     /**
      * 로그아웃 시 access token을 블랙리스트에 등록.
-     * TTL은 토큰의 잔여 유효기간으로 설정 → 만료되면 자동 삭제.
+     * Redis 키: blacklist:{jti} — JWT 전체 문자열 대신 UUID(jti)만 저장해 메모리 절약.
      */
-    public void blacklistAccessToken(String accessToken, Instant expiresAt) {
+    public void blacklistAccessToken(String jti, Instant expiresAt) {
         long remainingSeconds = expiresAt.getEpochSecond() - Instant.now().getEpochSecond();
         if (remainingSeconds > 0) {
             redisTemplate.opsForValue()
-                    .set(PREFIX_BLACKLIST + accessToken, "1", Duration.ofSeconds(remainingSeconds));
+                    .set(PREFIX_BLACKLIST + jti, "1", Duration.ofSeconds(remainingSeconds));
         }
     }
 
-    public boolean isBlacklisted(String accessToken) {
-        return Boolean.TRUE.equals(redisTemplate.hasKey(PREFIX_BLACKLIST + accessToken));
+    public boolean isBlacklisted(String jti) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(PREFIX_BLACKLIST + jti));
     }
 
     // ── InviteCode 캐시 ────────────────────────────────────────────────────────
