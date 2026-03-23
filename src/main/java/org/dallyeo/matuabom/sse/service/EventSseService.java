@@ -85,10 +85,50 @@ public class EventSseService {
     }
 
     /**
+     * 모임 초대 알림 — 초대받은 사용자에게 전송
+     */
+    public void sendMeetingInvited(String userId, String meetingId, String meetingName) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("meetingId", meetingId);
+        payload.put("meetingName", meetingName);
+        sendJson(userId, "meeting-invited", payload);
+    }
+
+    /**
+     * 모임 확정 알림 — 참여자 전원에게 전송
+     */
+    public void sendMeetingConfirmed(String userId, String meetingId, String meetingName) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("meetingId", meetingId);
+        payload.put("meetingName", meetingName);
+        sendJson(userId, "meeting-confirmed", payload);
+    }
+
+    private void sendJson(String userId, String eventName, Map<String, Object> payload) {
+        List<SseEmitter> emitters = userEmitters.getOrDefault(userId, List.of());
+        if (emitters.isEmpty()) return;
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            log.error("SSE serialize error for userId={}: {}", userId, e.getMessage());
+            return;
+        }
+        List<SseEmitter> dead = new ArrayList<>();
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.send(SseEmitter.event().name(eventName).data(json));
+            } catch (IOException e) {
+                dead.add(emitter);
+            }
+        }
+        dead.forEach(e -> removeEmitter(userId, e));
+    }
+
+    /**
      * Google OAuth 토큰 갱신 실패 시 사용자에게 재연동 요청 알림.
      */
-    public void sendGoogleReauthRequired(String userId) {
-        List<SseEmitter> emitters = userEmitters.getOrDefault(userId, List.of());
+    public void sendGoogleReauthRequired(String userId) {        List<SseEmitter> emitters = userEmitters.getOrDefault(userId, List.of());
         if (emitters.isEmpty()) {
             log.warn("Google reauth required for userId={} but no SSE connection", userId);
             return;

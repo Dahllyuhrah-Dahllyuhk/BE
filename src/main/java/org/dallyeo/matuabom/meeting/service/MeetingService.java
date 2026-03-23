@@ -1,6 +1,7 @@
 package org.dallyeo.matuabom.meeting.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.user.domain.UserEntity;
 import org.dallyeo.matuabom.meeting.domain.*;
@@ -9,6 +10,7 @@ import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
 import org.dallyeo.matuabom.meeting.dto.*;
 import org.dallyeo.matuabom.auth.service.GoogleOAuthClientService;
 import org.dallyeo.matuabom.calendar.service.GoogleCalendarService;
+import org.dallyeo.matuabom.sse.service.EventSseService;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
@@ -28,6 +30,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MeetingService {
 
     private final MeetingRepository meetingRepository;
@@ -36,6 +39,7 @@ public class MeetingService {
     private final GoogleOAuthClientService googleOAuthClientService;
     private final GoogleCalendarService googleCalendarService;
     private final CalendarEventRepository calendarEventRepository;
+    private final EventSseService eventSseService;
 
     private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -75,7 +79,16 @@ public class MeetingService {
             .participants(participants)
             .build();
 
-        return meetingRepository.save(meeting);
+        Meeting saved = meetingRepository.save(meeting);
+
+        // 초대된 사용자(호스트 제외)에게 SSE 알림
+        saved.getParticipants().stream()
+            .filter(p -> !p.getUserId().equals(hostUserId))
+            .forEach(p -> eventSseService.sendMeetingInvited(
+                p.getUserId(), saved.getId(), saved.getName()
+            ));
+
+        return saved;
     }
 
     // -------------------------------------------------------------------------
@@ -477,15 +490,50 @@ public class MeetingService {
         }
 
         boolean shouldCreateEvents = "CONFIRMED".equals(newStatus) && !"CONFIRMED".equals(oldStatus);
+        boolean shouldDeleteEvents = !"CONFIRMED".equals(newStatus) && "CONFIRMED".equals(oldStatus);
         meeting.setStatus(newStatus);
         Meeting saved = meetingRepository.save(meeting);
 
-        // 캘린더 이벤트 생성은 트랜잭션 밖에서 실행 (외부 API 호출)
         if (shouldCreateEvents) {
             createConfirmedEventsForParticipants(saved);
+            // 확정 알림: ACCEPTED 참여자 전원에게 SSE 발송
+            saved.getParticipants().stream()
+                .filter(p -> "ACCEPTED".equals(p.getStatus()))
+                .forEach(p -> eventSseService.sendMeetingConfirmed(
+                    p.getUserId(), saved.getId(), saved.getName()
+                ));
+        } else if (shouldDeleteEvents) {
+            deleteConfirmedEventsForParticipants(saved);
         }
 
         return saved;
+    }
+
+    /**
+     * 모임 확정 취소 시 ACCEPTED 참여자 전원의 캘린더에서 해당 모임 이벤트 삭제
+     */
+    private void deleteConfirmedEventsForParticipants(Meeting meeting) {
+        List<CalendarEventDto> meetingEvents = calendarEventRepository.findByMeetingId(meeting.getId());
+        if (meetingEvents.isEmpty()) return;
+
+        for (CalendarEventDto event : meetingEvents) {
+            String uid = event.getUserId();
+            try {
+                if (googleOAuthClientService.isLinked(uid)) {
+                    GoogleOAuthClientEntity tokens = googleOAuthClientService.getTokens(uid).orElse(null);
+                    if (tokens != null) {
+                        googleCalendarService.deleteGoogleEvent(tokens, uid, event.getId());
+                        continue;
+                    }
+                }
+                // 구글 미연동이면 로컬 삭제
+                calendarEventRepository.deleteById(event.getId());
+            } catch (Exception e) {
+                // 이미 삭제됐거나 실패해도 나머지는 계속 처리
+                log.warn("Failed to delete calendar event {} for user {}: {}", event.getId(), uid, e.getMessage());
+                calendarEventRepository.deleteById(event.getId());
+            }
+        }
     }
 
     /**
@@ -590,7 +638,14 @@ public class MeetingService {
 
                 meeting.getParticipants().add(newParticipant);
                 recalculateParticipantSchedules(newParticipant, meeting.getRequirement());
-                return meetingRepository.save(meeting);
+                Meeting saved = meetingRepository.save(meeting);
+
+                // 호스트에게 참여 알림
+                eventSseService.sendMeetingInvited(
+                    saved.getHostUserId(), saved.getId(), saved.getName()
+                );
+
+                return saved;
 
             } catch (OptimisticLockingFailureException e) {
                 if (attempt == maxRetries - 1) {

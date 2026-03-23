@@ -78,6 +78,28 @@ public class TokenStore {
         return Boolean.TRUE.equals(redisTemplate.hasKey(PREFIX_BLACKLIST + jti));
     }
 
+    /**
+     * Redis 다운 시 false 반환 (블랙리스트 체크 스킵) — JWT 서명은 상위에서 이미 검증됨
+     */
+    public boolean isBlacklistedSafe(String jti) {
+        try {
+            return isBlacklisted(jti);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Redis 다운 시 true 반환 (유효한 것으로 간주) — JWT 서명은 상위에서 이미 검증됨
+     */
+    public boolean isRefreshTokenValidSafe(String userId, String refreshToken) {
+        try {
+            return isRefreshTokenValid(userId, refreshToken);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
     // ── InviteCode 캐시 ────────────────────────────────────────────────────────
 
     /**

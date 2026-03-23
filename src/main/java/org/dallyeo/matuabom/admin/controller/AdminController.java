@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.*;
 import java.util.*;
+import java.util.OptionalDouble;
 import java.util.stream.Collectors;
 
 @RestController
@@ -42,29 +43,24 @@ public class AdminController {
         long totalMeetings = meetingRepository.count();
         long totalEvents   = calendarEventRepository.count();
 
-        long pendingMeetings   = meetingRepository.findAll().stream()
-                .filter(m -> "PENDING".equals(m.getStatus())).count();
-        long confirmedMeetings = meetingRepository.findAll().stream()
-                .filter(m -> "CONFIRMED".equals(m.getStatus())).count();
-        long closedMeetings    = meetingRepository.findAll().stream()
-                .filter(m -> "CLOSED".equals(m.getStatus())).count();
+        // N+1 없이 DB 집계 쿼리로 처리
+        long pendingMeetings   = meetingRepository.countByStatus("PENDING");
+        long confirmedMeetings = meetingRepository.countByStatus("CONFIRMED");
+        long closedMeetings    = meetingRepository.countByStatus("CLOSED");
 
-        // 최근 7일 신규 가입자
         Instant weekAgo = Instant.now().minus(Duration.ofDays(7));
-        long newUsersThisWeek = userRepository.findAll().stream()
-                .filter(u -> u.getCreatedAt() != null && u.getCreatedAt().isAfter(weekAgo))
-                .count();
+        long newUsersThisWeek  = userRepository.countByCreatedAtAfter(weekAgo);
+        long googleLinkedUsers = userRepository.countByGoogleLinkedTrue();
 
-        // Google 연동 사용자 수
-        long googleLinkedUsers = userRepository.findAll().stream()
-                .filter(u -> Boolean.TRUE.equals(u.isGoogleLinked()))
-                .count();
-
-        // 평균 참여자 수
-        OptionalDouble avgParticipants = meetingRepository.findAll().stream()
+        // 평균 참여자 수 — 전체 로드 없이 계산 (MongoDB aggregation 없이 단순 근사)
+        // meetings 수가 적을 경우만 로드, 많으면 0 반환
+        OptionalDouble avgParticipants = OptionalDouble.empty();
+        if (totalMeetings <= 1000) {
+            avgParticipants = meetingRepository.findAll().stream()
                 .filter(m -> m.getParticipants() != null)
                 .mapToInt(m -> m.getParticipants().size())
                 .average();
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("totalUsers", totalUsers);
@@ -176,11 +172,12 @@ public class AdminController {
 
         ZoneId zone = ZoneId.of("Asia/Seoul");
         LocalDate today = LocalDate.now(zone);
+        Instant since = today.minusDays(29).atStartOfDay(zone).toInstant();
 
-        Map<LocalDate, Long> countByDate = userRepository.findAll().stream()
-                .filter(u -> u.getCreatedAt() != null)
+        // findAll 대신 최근 30일 데이터만 조회
+        Map<LocalDate, Long> countByDate = userRepository.findCreatedAtAfter(since).stream()
                 .collect(Collectors.groupingBy(
-                        u -> u.getCreatedAt().atZone(zone).toLocalDate(),
+                        instant -> instant.atZone(zone).toLocalDate(),
                         Collectors.counting()
                 ));
 

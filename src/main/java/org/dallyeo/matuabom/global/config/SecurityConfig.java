@@ -59,6 +59,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/google/webhook").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/admin/**").permitAll()
+                        .requestMatchers("/api/chat/**").denyAll()  // AI 기능 비활성화
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )

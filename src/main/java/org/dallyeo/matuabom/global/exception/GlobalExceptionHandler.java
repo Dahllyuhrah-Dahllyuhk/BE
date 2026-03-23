@@ -66,7 +66,7 @@ public class GlobalExceptionHandler {
         // SSE 커넥션에서 발생한 예외는 Map을 text/event-stream으로 변환할 수 없으므로 스킵
         String accept = request.getHeader("Accept");
         if (accept != null && accept.contains(MediaType.TEXT_EVENT_STREAM_VALUE)) {
-            log.warn("Exception in SSE connection (suppressed response body): {}", e.getMessage());
+            log.debug("Exception in SSE connection (suppressed response body): {}", e.getMessage());
             return null;
         }
         log.error("Unhandled exception", e);

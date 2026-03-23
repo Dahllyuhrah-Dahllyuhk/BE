@@ -3,6 +3,7 @@ package org.dallyeo.matuabom.meeting.repository;
 import org.dallyeo.matuabom.meeting.domain.Meeting;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
+import org.springframework.data.mongodb.repository.Aggregation;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,4 +25,6 @@ public interface MeetingRepository extends MongoRepository<Meeting, String> {
     List<Meeting> findByStatusAndParticipantsUserId(String status, String userId);
 
     List<Meeting> findByStatusOrStatusAndParticipantsUserId(String status1, String status2, String userId);
+
+    long countByStatus(String status);
 }
