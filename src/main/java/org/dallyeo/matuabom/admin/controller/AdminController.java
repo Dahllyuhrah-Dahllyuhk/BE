@@ -2,6 +2,7 @@ package org.dallyeo.matuabom.admin.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
+import org.dallyeo.matuabom.calendar.service.WatchChannelRenewalService;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,7 @@ public class AdminController {
     private final UserJpaRepository userRepository;
     private final MeetingRepository meetingRepository;
     private final CalendarEventRepository calendarEventRepository;
+    private final WatchChannelRenewalService watchChannelRenewalService;
 
     @Value("${app.admin-secret:admin1234}")
     private String adminSecret;
@@ -196,8 +198,7 @@ public class AdminController {
     // ── 일별 모임 생성 추이 (최근 30일) ──────────────────────────────
 
     @GetMapping("/stats/meetings")
-    public ResponseEntity<?> meetingTrend(
-            @RequestHeader(value = "X-Admin-Secret", required = false) String secret
+    public ResponseEntity<?> meetingTrend(            @RequestHeader(value = "X-Admin-Secret", required = false) String secret
     ) {
         if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
 
@@ -220,5 +221,16 @@ public class AdminController {
             trend.add(row);
         }
         return ResponseEntity.ok(trend);
+    }
+
+    // ── Google Watch 채널 즉시 갱신 ───────────────────────────────────
+
+    @PostMapping("/watch-channels/renew")
+    public ResponseEntity<?> renewWatchChannels(
+            @RequestHeader(value = "X-Admin-Secret", required = false) String secret
+    ) {
+        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
+        watchChannelRenewalService.renewExpiringChannels();
+        return ResponseEntity.ok(Map.of("message", "Watch channel renewal triggered"));
     }
 }

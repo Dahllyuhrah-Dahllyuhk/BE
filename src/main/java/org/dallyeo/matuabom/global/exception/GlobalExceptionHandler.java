@@ -1,7 +1,9 @@
 package org.dallyeo.matuabom.global.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -60,7 +62,13 @@ public class GlobalExceptionHandler {
 
     // 500 — 예상치 못한 예외 (스택 트레이스 외부 노출 차단)
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, String>> handleException(Exception e) {
+    public ResponseEntity<Map<String, String>> handleException(Exception e, HttpServletRequest request) {
+        // SSE 커넥션에서 발생한 예외는 Map을 text/event-stream으로 변환할 수 없으므로 스킵
+        String accept = request.getHeader("Accept");
+        if (accept != null && accept.contains(MediaType.TEXT_EVENT_STREAM_VALUE)) {
+            log.warn("Exception in SSE connection (suppressed response body): {}", e.getMessage());
+            return null;
+        }
         log.error("Unhandled exception", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "internal_server_error", "message", "서버 오류가 발생했습니다."));
