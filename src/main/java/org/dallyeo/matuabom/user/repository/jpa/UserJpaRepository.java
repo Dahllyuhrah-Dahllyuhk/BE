@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,4 +16,11 @@ public interface UserJpaRepository extends JpaRepository<UserEntity, Long> {
 
     @Query("SELECT u FROM UserEntity u WHERE u.mongoId IN :mongoIds")
     List<UserEntity> findAllByMongoIdIn(@Param("mongoIds") List<String> mongoIds);
+
+    long countByGoogleLinkedTrue();
+
+    long countByCreatedAtAfter(Instant since);
+
+    @Query("SELECT u.createdAt FROM UserEntity u WHERE u.createdAt >= :since ORDER BY u.createdAt ASC")
+    List<Instant> findCreatedAtAfter(@Param("since") Instant since);
 }

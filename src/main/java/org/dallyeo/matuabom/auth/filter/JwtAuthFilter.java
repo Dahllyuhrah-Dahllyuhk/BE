@@ -49,13 +49,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // ① Access Token 유효 + 블랙리스트에 없는 경우 → 정상 인증
         if (accessToken != null) {
             try {
-                boolean blacklisted = false;
-                try {
-                    blacklisted = tokenStore.isBlacklisted(jwtUtil.getJti(accessToken));
-                } catch (Exception redisEx) {
-                    log.warn("Redis unavailable during blacklist check, allowing request. path={}", request.getRequestURI());
-                }
-
+                boolean blacklisted = tokenStore.isBlacklistedSafe(jwtUtil.getJti(accessToken));
                 if (blacklisted) {
                     clearContext(response);
                     filterChain.doFilter(request, response);
@@ -94,13 +88,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                if (!tokenStore.isRefreshTokenValid(userId, refreshToken)) {
+                if (!tokenStore.isRefreshTokenValidSafe(userId, refreshToken)) {
                     log.warn("Refresh token mismatch for userId={}. Possible token theft.", userId);
                     clearContext(response);
                     filterChain.doFilter(request, response);
                     return;
                 }
-
                 // 분산 락 획득 — 동시 요청 중 첫 번째만 토큰 갱신
                 if (tokenStore.acquireTokenRefreshLock(userId)) {
                     try {
