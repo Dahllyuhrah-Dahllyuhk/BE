@@ -622,7 +622,7 @@ public class MeetingService {
                 boolean alreadyJoined = meeting.getParticipants().stream()
                     .anyMatch(p -> p.getUserId().equals(userId));
                 if (alreadyJoined) {
-                    throw new IllegalStateException("이미 참여한 모임입니다.");
+                    throw new IllegalStateException("이미 참여한 모임입니다. meetingId=" + meeting.getId());
                 }
 
                 UserEntity user = userRepository.findByMongoId(userId)
