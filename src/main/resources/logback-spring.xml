@@ -45,6 +45,9 @@
         </root>
         <logger name="org.dallyeo.matuabom" level="INFO"/>
         <logger name="org.springframework.security" level="WARN"/>
+        <!-- SSE timeout 시 response already committed 에러는 노이즈 — 억제 -->
+        <logger name="org.apache.catalina.core.ContainerBase" level="ERROR"/>
+        <logger name="org.apache.catalina.connector" level="ERROR"/>
 
     </springProfile>
 

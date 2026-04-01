@@ -58,7 +58,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 String userId = jwtUtil.validateAndGetSub(accessToken);
 
-                // 토큰 타입 검증 — refresh token으로 API 호출 차단
                 if (!"access".equals(jwtUtil.getTokenType(accessToken))) {
                     log.warn("Non-access token used as access token. path={}", request.getRequestURI());
                     clearContext(response);
@@ -80,7 +79,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 String userId = jwtUtil.validateAndGetSub(refreshToken);
 
-                // 토큰 타입 검증
                 if (!"refresh".equals(jwtUtil.getTokenType(refreshToken))) {
                     log.warn("Non-refresh token used as refresh token. path={}", request.getRequestURI());
                     clearContext(response);
@@ -88,29 +86,29 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                if (!tokenStore.isRefreshTokenValidSafe(userId, refreshToken)) {
-                    log.warn("Refresh token mismatch for userId={}. Possible token theft.", userId);
-                    clearContext(response);
-                    filterChain.doFilter(request, response);
-                    return;
-                }
-                // 분산 락 획득 — 동시 요청 중 첫 번째만 토큰 갱신
+                // 락을 먼저 획득 후 토큰 검증 — 동시 요청 race condition 방지
                 if (tokenStore.acquireTokenRefreshLock(userId)) {
                     try {
-                        String newAccessToken  = jwtUtil.createAccessToken(userId);
-                        String newRefreshToken = jwtUtil.createRefreshToken(userId);
+                        // 락 안에서 검증 — 다른 요청이 이미 rotate했으면 mismatch이지만 정상
+                        if (!tokenStore.isRefreshTokenValidSafe(userId, refreshToken)) {
+                            // 이미 다른 요청이 rotate 완료한 케이스 → 인증만 허용, 재발급 생략
+                            log.debug("Refresh token already rotated for userId={}, skipping rotation", userId);
+                        } else {
+                            String newAccessToken  = jwtUtil.createAccessToken(userId);
+                            String newRefreshToken = jwtUtil.createRefreshToken(userId);
 
-                        tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
+                            tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
 
-                        addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getRefreshTokenSeconds());
-                        addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
+                            addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getRefreshTokenSeconds());
+                            addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
 
-                        log.debug("Token refreshed silently for userId={}", userId);
+                            log.debug("Token refreshed silently for userId={}", userId);
+                        }
                     } finally {
                         tokenStore.releaseTokenRefreshLock(userId);
                     }
                 } else {
-                    // 락 획득 실패 — 다른 요청이 이미 갱신 중, 현재 토큰으로 인증만 수행
+                    // 락 획득 실패 — 다른 요청이 이미 갱신 중, 인증만 수행
                     log.debug("Token refresh lock not acquired for userId={}, skipping rotation", userId);
                 }
 
@@ -118,14 +116,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
             } catch (JwtException e) {
                 log.debug("Refresh token also expired. Re-login required.");
+                // 실제 탈취 의심 케이스(토큰이 유효하지만 DB 불일치)는 락 안에서 처리되므로
+                // 여기는 만료 케이스만 도달함
                 clearContext(response);
             }
         }
 
         filterChain.doFilter(request, response);
     }
-
-    // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     private void setAuthentication(HttpServletRequest request, String userId) {
         CustomPrincipal principal = new CustomPrincipal(userId);
