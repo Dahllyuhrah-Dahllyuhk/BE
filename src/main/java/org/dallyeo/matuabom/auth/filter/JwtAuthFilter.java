@@ -43,14 +43,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String accessToken  = extractCookie(request, "ACCESS_TOKEN");
+        String accessToken  = extractBearerToken(request);
         String refreshToken = extractCookie(request, "REFRESH_TOKEN");
 
         // ① Access Token 유효 + 블랙리스트에 없는 경우 → 정상 인증
         if (accessToken != null) {
             try {
-                boolean blacklisted = tokenStore.isBlacklistedSafe(jwtUtil.getJti(accessToken));
-                if (blacklisted) {
+                String jti = jwtUtil.getJti(accessToken);
+
+                if (tokenStore.isBlacklistedSafe(jti)) {
                     clearContext(response);
                     filterChain.doFilter(request, response);
                     return;
@@ -77,7 +78,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // ② Access Token 없거나 만료 → Refresh Token으로 무중단 재발급
         if (refreshToken != null) {
             try {
-                String userId = jwtUtil.validateAndGetSub(refreshToken);
+                String userId    = jwtUtil.validateAndGetSub(refreshToken);
+                String refreshJti = jwtUtil.getJti(refreshToken);
 
                 if (!"refresh".equals(jwtUtil.getTokenType(refreshToken))) {
                     log.warn("Non-refresh token used as refresh token. path={}", request.getRequestURI());
@@ -86,44 +88,87 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                // 락을 먼저 획득 후 토큰 검증 — 동시 요청 race condition 방지
+                // ── 분산 락 획득 ───────────────────────────────────────────
                 if (tokenStore.acquireTokenRefreshLock(userId)) {
                     try {
-                        // 락 안에서 검증 — 다른 요청이 이미 rotate했으면 mismatch이지만 정상
-                        if (!tokenStore.isRefreshTokenValidSafe(userId, refreshToken)) {
-                            // 이미 다른 요청이 rotate 완료한 케이스 → 인증만 허용, 재발급 생략
-                            log.debug("Refresh token already rotated for userId={}, skipping rotation", userId);
-                        } else {
-                            String newAccessToken  = jwtUtil.createAccessToken(userId);
-                            String newRefreshToken = jwtUtil.createRefreshToken(userId);
-
-                            tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
-
-                            addCookie(response, "ACCESS_TOKEN",  newAccessToken,  (int) jwtUtil.getRefreshTokenSeconds());
-                            addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
-
-                            log.debug("Token refreshed silently for userId={}", userId);
+                        // 1. 명시적 폐기(로그아웃) 확인 — rf_blacklist에 있으면 차단
+                        if (tokenStore.isRefreshBlacklistedSafe(refreshJti)) {
+                            log.warn("Blacklisted refresh token used. userId={}", userId);
+                            clearContext(response);
+                            filterChain.doFilter(request, response);
+                            return;
                         }
+
+                        // 2. Redis 현재값과 불일치 확인
+                        if (!tokenStore.isRefreshTokenValidSafe(userId, refreshToken)) {
+                            String prevJti = tokenStore.getPrevJti(userId);
+                            if (refreshJti.equals(prevJti)) {
+                                // 동시 회전 race condition — grace window 내 이전 토큰
+                                log.debug("Grace window hit for userId={}, allowing request", userId);
+                                setAuthentication(request, userId);
+                                filterChain.doFilter(request, response);
+                                return;
+                            }
+                            // 진짜 탈취 의심
+                            log.warn("Refresh token mismatch. Possible token theft. userId={}", userId);
+                            clearContext(response);
+                            filterChain.doFilter(request, response);
+                            return;
+                        }
+
+                        // 3. 정상 rotate
+                        String newAccessToken  = jwtUtil.createAccessToken(userId);
+                        String newRefreshToken = jwtUtil.createRefreshToken(userId);
+
+                        // 이전 jti를 grace window(10s)에 저장
+                        tokenStore.savePrevJti(userId, refreshJti);
+                        // 이전 refresh token을 블랙리스트에 등록 (잔여 TTL)
+                        tokenStore.blacklistRefreshToken(refreshJti, jwtUtil.getExpiration(refreshToken));
+                        // 새 refresh token 저장
+                        tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
+
+                        addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
+                        // 새 Access Token은 응답 헤더로 전달 (JS가 메모리에 저장)
+                        response.setHeader("X-New-Access-Token", newAccessToken);
+
+                        log.debug("Token rotated for userId={}", userId);
+
                     } finally {
                         tokenStore.releaseTokenRefreshLock(userId);
                     }
+
                 } else {
-                    // 락 획득 실패 — 다른 요청이 이미 갱신 중, 인증만 수행
+                    // 락 획득 실패 — 다른 요청이 이미 rotate 중
+                    // rf_blacklist 확인 후 grace window로 처리
+                    if (tokenStore.isRefreshBlacklistedSafe(refreshJti)) {
+                        // 이미 rotate 완료되어 블랙리스트에 등록된 이전 토큰
+                        String prevJti = tokenStore.getPrevJti(userId);
+                        if (refreshJti.equals(prevJti)) {
+                            log.debug("Lock miss + grace window hit for userId={}", userId);
+                            setAuthentication(request, userId);
+                            filterChain.doFilter(request, response);
+                            return;
+                        }
+                        log.warn("Blacklisted refresh token used (no lock). userId={}", userId);
+                        clearContext(response);
+                        filterChain.doFilter(request, response);
+                        return;
+                    }
                     log.debug("Token refresh lock not acquired for userId={}, skipping rotation", userId);
                 }
 
                 setAuthentication(request, userId);
 
             } catch (JwtException e) {
-                log.debug("Refresh token also expired. Re-login required.");
-                // 실제 탈취 의심 케이스(토큰이 유효하지만 DB 불일치)는 락 안에서 처리되므로
-                // 여기는 만료 케이스만 도달함
+                log.debug("Refresh token expired or invalid. Re-login required.");
                 clearContext(response);
             }
         }
 
         filterChain.doFilter(request, response);
     }
+
+    // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     private void setAuthentication(HttpServletRequest request, String userId) {
         CustomPrincipal principal = new CustomPrincipal(userId);
@@ -136,6 +181,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private void clearContext(HttpServletResponse response) {
         SecurityContextHolder.clearContext();
+    }
+
+    private String extractBearerToken(HttpServletRequest request) {
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (header != null && header.startsWith("Bearer ")) {
+            return header.substring(7);
+        }
+        return null;
     }
 
     private String extractCookie(HttpServletRequest request, String name) {

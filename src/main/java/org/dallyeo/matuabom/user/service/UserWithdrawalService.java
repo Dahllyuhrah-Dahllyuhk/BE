@@ -37,7 +37,7 @@ public class UserWithdrawalService {
      * - Redis: Refresh Token 삭제
      */
     @Transactional
-    public void withdraw(String userId, String accessToken) {
+    public void withdraw(String userId) {
         log.info("User withdrawal initiated: userId={}", userId);
 
         // 1. 모임 처리: 호스트면 삭제, 참여자면 목록에서 제거

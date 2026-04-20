@@ -1,6 +1,5 @@
 package org.dallyeo.matuabom.auth.handler;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -28,6 +27,7 @@ import org.springframework.http.HttpHeaders;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -104,14 +104,11 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
         // Refresh Token → Redis 저장 (TTL 자동 설정)
         tokenStore.saveRefreshToken(userId, refreshToken, jwtUtil.getRefreshTokenSeconds());
 
-        ResponseCookie accessCookie = ResponseCookie.from("ACCESS_TOKEN", accessToken)
-                .path("/")
-                .httpOnly(true)
-                .secure(cookieSecure)
-                .sameSite(cookieSecure ? "None" : "Lax")
-                .maxAge(Duration.ofSeconds(jwtUtil.getRefreshTokenSeconds()))
-                .build();
+        // Access Token → 임시 코드로 교환 (30초 TTL, 1회용)
+        String authCode = UUID.randomUUID().toString();
+        tokenStore.saveAuthCode(authCode, accessToken);
 
+        // Refresh Token만 httpOnly 쿠키로 설정
         ResponseCookie refreshCookie = ResponseCookie.from("REFRESH_TOKEN", refreshToken)
                 .path("/")
                 .httpOnly(true)
@@ -120,9 +117,8 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
                 .maxAge(Duration.ofSeconds(jwtUtil.getRefreshTokenSeconds()))
                 .build();
 
-        response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
-        response.sendRedirect(frontendBaseUrl);
+        response.sendRedirect(frontendBaseUrl + "?code=" + authCode);
     }
 
     @SuppressWarnings("unchecked")
@@ -165,12 +161,26 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
             OAuth2AuthenticationToken oauthToken,
             Authentication authentication
     ) throws IOException {
-        String jwt = getCookie(request, "ACCESS_TOKEN");
-        String userId = (jwt != null) ? jwtUtil.getUserIdFromToken(jwt) : null;
+        // 1순위: SecurityContext (JwtAuthFilter가 REFRESH_TOKEN으로 인증한 경우)
+        String userId = extractUserIdFromContext();
+
+        // 2순위: 세션에 저장된 userId (구글 OAuth 리다이렉트로 SecurityContext가 교체된 경우)
+        if (userId == null) {
+            HttpSession session = request.getSession(false);
+            if (session != null) {
+                userId = (String) session.getAttribute("pending_google_link_userId");
+            }
+        }
 
         if (userId == null) {
-            response.sendRedirect(frontendBaseUrl);
+            response.sendRedirect(frontendBaseUrl + "/login");
             return;
+        }
+
+        // 세션에서 임시 userId 제거
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.removeAttribute("pending_google_link_userId");
         }
 
         OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
@@ -183,21 +193,31 @@ public class JwtLoginSuccessHandler implements AuthenticationSuccessHandler {
 
         googleOAuthClientService.saveTokens(userId, googleEmail, googleClient);
 
-        // 웹훅 채널 등록 (없거나 만료된 경우에만)
         googleOAuthClientService.getTokens(userId).ifPresent(tokens ->
                 googleCalendarService.ensureWatchChannel(tokens)
         );
 
-        // 증분 동기화 실행
         googleSyncService.runIncrementalSync(userId);
 
-        response.sendRedirect(frontendBaseUrl);
+        // 구글 연동 후 리다이렉트 시에도 access token을 재발급해서 전달
+        // (OAuth 리다이렉트로 FE 메모리의 access token이 날아가므로)
+        String accessToken = jwtUtil.createAccessToken(userId);
+        String authCode = UUID.randomUUID().toString();
+        tokenStore.saveAuthCode(authCode, accessToken);
+
+        response.sendRedirect(frontendBaseUrl + "?code=" + authCode);
     }
 
-    private String getCookie(HttpServletRequest request, String name) {
-        if (request.getCookies() == null) return null;
-        for (Cookie c : request.getCookies()) {
-            if (name.equals(c.getName())) return c.getValue();
+    /**
+     * SecurityContext에서 인증된 사용자의 userId를 추출.
+     * JwtAuthFilter가 REFRESH_TOKEN으로 인증을 설정해두므로 이를 활용.
+     */
+    private String extractUserIdFromContext() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return null;
+        Object principal = auth.getPrincipal();
+        if (principal instanceof org.dallyeo.matuabom.auth.security.CustomPrincipal cp) {
+            return cp.getUserId();
         }
         return null;
     }

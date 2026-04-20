@@ -5,6 +5,7 @@ import org.dallyeo.matuabom.auth.service.TokenStore;
 import org.dallyeo.matuabom.user.domain.InviteCodeEntity;
 import org.dallyeo.matuabom.user.repository.jpa.InviteCodeJpaRepository;
 import org.dallyeo.matuabom.global.util.InviteCodeGenerator;
+import org.dallyeo.matuabom.global.exception.ConflictException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +38,6 @@ public class InviteCodeService {
                 return code;
             }
         }
-        throw new IllegalStateException("초대코드 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        throw ConflictException.inviteCodeGenerationFailed();
     }
 }

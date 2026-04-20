@@ -23,6 +23,7 @@ import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.meeting.service.MeetingService;
 import org.dallyeo.matuabom.calendar.service.CalendarEventService;
 import org.dallyeo.matuabom.auth.security.CustomPrincipal;
+import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -156,7 +157,7 @@ public class AIService {
             String uid = userId();
             return Collections.singletonList(meetingService.create(uid, request));
         }
-        throw new IllegalArgumentException("모임 생성 데이터가 맞지 않습니다. category: " + response.getCategory());
+        throw BadRequestException.invalidAiResponse(String.valueOf(response.getCategory()));
     }
 
     private List<CalendarEventDto> getSchedule(AIResponseDTO response) {
@@ -166,7 +167,7 @@ public class AIService {
             Long end = data.getEnd();
             return calendarEventService.getEventsByKeyword(start, end, keyword);
         }
-        throw new IllegalArgumentException("일정 조회 요청 데이터가 잘못됐습니다. category: " + response.getCategory());
+        throw BadRequestException.invalidAiResponse(String.valueOf(response.getCategory()));
     }
 
     private List<CalendarEventDto> deleteSchedule(AIResponseDTO response)
@@ -193,7 +194,7 @@ public class AIService {
             }
             return calendarEventService.create(createEventReq);
         }
-        throw new IllegalArgumentException("데이터 형태가 맞지 않습니다.");
+        throw BadRequestException.invalidAiResponse("UNKNOWN");
     }
 
     private String userId() {
@@ -204,6 +205,6 @@ public class AIService {
         if (auth != null && auth.getPrincipal() instanceof String) {
             return (String) auth.getPrincipal();
         }
-        throw new IllegalStateException("no authenticated user");
+        throw AuthException.noAuthenticatedUser();
     }
 }

@@ -16,15 +16,23 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // 400 — 잘못된 요청
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
-        log.warn("Bad request: {}", e.getMessage());
-        return ResponseEntity.badRequest()
-                .body(Map.of("error", "bad_request", "message", e.getMessage()));
+    // ── Custom AppException 계층 ──────────────────────────────────────────────
+
+    @ExceptionHandler(AppException.class)
+    public ResponseEntity<Map<String, String>> handleAppException(AppException e) {
+        HttpStatus status = e.getStatus();
+        if (status.is5xxServerError()) {
+            log.error("AppException [{}]: {}", e.getErrorCode(), e.getMessage(), e);
+        } else {
+            log.warn("AppException [{}]: {}", e.getErrorCode(), e.getMessage());
+        }
+        return ResponseEntity.status(status)
+                .body(Map.of("error", e.getErrorCode(), "message", e.getMessage()));
     }
 
-    // 400 — Validation 실패 (@Valid)
+    // ── 레거시 예외 (AppException으로 교체되지 않은 잔여분) ──────────────────
+
+    // 400 — @Valid 실패
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()
@@ -36,26 +44,34 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", "validation_failed", "message", message));
     }
 
-    // 403 — 권한 없음
+    // 400 — 아직 교체 안 된 IllegalArgumentException
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("Bad request (legacy): {}", e.getMessage());
+        return ResponseEntity.badRequest()
+                .body(Map.of("error", "bad_request", "message", e.getMessage()));
+    }
+
+    // 403 — 아직 교체 안 된 SecurityException
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<Map<String, String>> handleSecurity(SecurityException e) {
-        log.warn("Forbidden: {}", e.getMessage());
+        log.warn("Forbidden (legacy): {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", "forbidden", "message", e.getMessage()));
     }
 
-    // 404 — 사용자 없음
+    // 404 — Spring Security UsernameNotFoundException
     @ExceptionHandler(UsernameNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleUserNotFound(UsernameNotFoundException e) {
-        log.warn("User not found: {}", e.getMessage());
+        log.warn("User not found (legacy): {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of("error", "not_found", "message", e.getMessage()));
     }
 
-    // 409 — 상태 충돌
+    // 409 — 아직 교체 안 된 IllegalStateException
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> handleIllegalState(IllegalStateException e) {
-        log.warn("Conflict: {}", e.getMessage());
+        log.warn("Conflict (legacy): {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", "conflict", "message", e.getMessage()));
     }
@@ -63,10 +79,9 @@ public class GlobalExceptionHandler {
     // 500 — 예상치 못한 예외 (스택 트레이스 외부 노출 차단)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleException(Exception e, HttpServletRequest request) {
-        // SSE 커넥션에서 발생한 예외는 Map을 text/event-stream으로 변환할 수 없으므로 스킵
         String accept = request.getHeader("Accept");
         if (accept != null && accept.contains(MediaType.TEXT_EVENT_STREAM_VALUE)) {
-            log.debug("Exception in SSE connection (suppressed response body): {}", e.getMessage());
+            log.debug("Exception in SSE connection (suppressed): {}", e.getMessage());
             return null;
         }
         log.error("Unhandled exception", e);

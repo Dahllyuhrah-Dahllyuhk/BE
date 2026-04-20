@@ -58,6 +58,7 @@ public class SecurityConfig {
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/api/google/webhook").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
+                        .requestMatchers("/api/auth/token").permitAll()
                         .requestMatchers("/api/admin/**").permitAll()
                         .requestMatchers("/api/chat/**").denyAll()  // AI 기능 비활성화
                         .requestMatchers("/api/**").authenticated()
@@ -94,7 +95,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of("http://localhost:3000", frontendBaseUrl));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "X-Admin-Secret"));
-        config.setExposedHeaders(List.of("Set-Cookie"));
+        config.setExposedHeaders(List.of("Set-Cookie", "X-New-Access-Token"));
 
         UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/**", config);

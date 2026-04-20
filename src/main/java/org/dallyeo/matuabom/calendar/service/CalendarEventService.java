@@ -8,6 +8,7 @@ import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.auth.security.CustomPrincipal;
 import org.dallyeo.matuabom.auth.service.GoogleOAuthClientService;
+import org.dallyeo.matuabom.global.exception.*;
 import org.dallyeo.matuabom.sse.service.EventSseService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,7 +37,7 @@ public class CalendarEventService {
         if (auth != null && auth.getPrincipal() instanceof CustomPrincipal principal) {
             return principal.getUserId();
         }
-        throw new IllegalStateException("no authenticated user");
+        throw AuthException.noAuthenticatedUser();
     }
 
     public List<CalendarEventDto> getEvents(String start, String end) {
@@ -55,7 +56,7 @@ public class CalendarEventService {
 
         if (linked) {
             GoogleOAuthClientEntity tokens = googleTokens.getTokens(uid)
-                    .orElseThrow(() -> new IllegalStateException("Google token missing"));
+                    .orElseThrow(() -> NotFoundException.googleToken(uid));
 
             saved = googleCalendarService.createGoogleEvent(tokens, uid, req);
             googleSyncService.runIncrementalSync(uid);
@@ -72,14 +73,14 @@ public class CalendarEventService {
         String uid = userId();
 
         repository.findByIdAndUserId(eventId, uid)
-                .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
+                .orElseThrow(() -> NotFoundException.calendarEvent(eventId));
 
         boolean linked = googleTokens.isLinked(uid);
         CalendarEventDto updated;
 
         if (linked) {
             GoogleOAuthClientEntity tokens = googleTokens.getTokens(uid)
-                    .orElseThrow(() -> new IllegalStateException("Google token missing"));
+                    .orElseThrow(() -> NotFoundException.googleToken(uid));
 
             try {
                 updated = googleCalendarService.updateGoogleEvent(tokens, uid, eventId, req);
@@ -88,7 +89,7 @@ public class CalendarEventService {
                 if (code == 404 || code == 410) {
                     repository.deleteById(eventId);
                     eventSseService.sendEventsUpdated(uid);
-                    throw new IllegalStateException("Google event already removed");
+                    throw ConflictException.googleEventAlreadyRemoved();
                 }
                 throw e;
             }
@@ -107,7 +108,7 @@ public class CalendarEventService {
         String uid = userId();
 
         repository.findByIdAndUserId(eventId, uid)
-                .orElseThrow(() -> new IllegalArgumentException("event not found or not owner"));
+                .orElseThrow(() -> NotFoundException.calendarEvent(eventId));
 
         if (googleTokens.isLinked(uid)) {
 
