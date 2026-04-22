@@ -72,6 +72,16 @@ dependencies {
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'                        // .env 파일 환경 변수 로드
     implementation 'com.bucket4j:bucket4j-core:8.10.1'                         // Rate Limiting
 
+    // -------------------------------------------------------------------------
+    // 📋 Logging (ELK 연동)
+    // -------------------------------------------------------------------------
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.0'         // JSON 형식 로그 (Logstash 전송용)
+
+    // -------------------------------------------------------------------------
+    // 📊 Metrics (Prometheus 연동)
+    // -------------------------------------------------------------------------
+    implementation 'io.micrometer:micrometer-registry-prometheus'               // /actuator/prometheus 엔드포인트
+
     // Lombok (컴파일 시 자동 코드 생성)
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
