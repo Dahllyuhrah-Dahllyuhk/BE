@@ -101,25 +101,30 @@ app:
     access-token-seconds: 7200        # 2시간
     refresh-token-seconds: 2592000    # 30일
 
-# ── Actuator (헬스체크 전용) ───────────────────────────────────────────
+# ── Actuator ──────────────────────────────────────────────────────────
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health, prometheus
   endpoint:
     health:
       show-details: never
       probes:
-        enabled: true   # /actuator/health/liveness, /actuator/health/readiness 활성화
+        enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: matuabom
   health:
     livenessState:
       enabled: true
     readinessState:
       enabled: true
     db:
-      enabled: true     # PostgreSQL 연결 확인
+      enabled: true
     mongo:
-      enabled: true     # MongoDB 연결 확인
+      enabled: true
     redis:
-      enabled: true     # Redis 연결 확인
+      enabled: true
