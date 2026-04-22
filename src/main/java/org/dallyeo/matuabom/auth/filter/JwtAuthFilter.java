@@ -130,6 +130,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
                         // 새 Access Token은 응답 헤더로 전달 (JS가 메모리에 저장)
                         response.setHeader("X-New-Access-Token", newAccessToken);
+                        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
 
                         log.debug("Token rotated for userId={}", userId);
 

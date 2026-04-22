@@ -53,7 +53,7 @@ public class FriendService {
 
         final String ownerUserId = codeOwnerUserId;
         return userJpaRepository.findByMongoId(ownerUserId)
-                .orElseThrow(() -> NotFoundException.friend());
+                .orElseThrow(() -> NotFoundException.user(ownerUserId));
     }
 
     @Transactional(readOnly = true)
