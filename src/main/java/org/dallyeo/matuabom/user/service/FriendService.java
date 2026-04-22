@@ -8,6 +8,7 @@ import org.dallyeo.matuabom.user.repository.jpa.FriendJpaRepository;
 import org.dallyeo.matuabom.user.repository.jpa.InviteCodeJpaRepository;
 import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
 import org.dallyeo.matuabom.user.domain.InviteCodeEntity;
+import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,13 +32,13 @@ public class FriendService {
         if (codeOwnerUserId == null) {
             // 캐시 미스 → DB 조회 후 캐싱
             InviteCodeEntity inviteCode = inviteCodeJpaRepository.findByCode(code)
-                    .orElseThrow(() -> new IllegalArgumentException("해당 초대코드가 없습니다."));
+                    .orElseThrow(() -> NotFoundException.inviteCode(code));
             codeOwnerUserId = inviteCode.getOwnerUserId();
             tokenStore.cacheInviteCode(code, codeOwnerUserId);
         }
 
         if (codeOwnerUserId.equals(currentUserId)) {
-            throw new IllegalStateException("자신의 초대코드는 사용할 수 없습니다.");
+            throw ConflictException.selfInviteCode();
         }
 
         // userId 정렬 (중복 방지)
@@ -45,14 +46,14 @@ public class FriendService {
         String u2 = codeOwnerUserId.compareTo(currentUserId) < 0 ? currentUserId : codeOwnerUserId;
 
         if (friendJpaRepository.existsByUserId1AndUserId2(u1, u2)) {
-            throw new IllegalStateException("이미 친구입니다.");
+            throw ConflictException.alreadyFriend();
         }
 
         friendJpaRepository.save(FriendEntity.create(codeOwnerUserId, currentUserId));
 
         final String ownerUserId = codeOwnerUserId;
         return userJpaRepository.findByMongoId(ownerUserId)
-                .orElseThrow(() -> new IllegalStateException("친구 정보가 없습니다."));
+                .orElseThrow(() -> NotFoundException.friend());
     }
 
     @Transactional(readOnly = true)
@@ -71,20 +72,20 @@ public class FriendService {
     @Transactional
     public UserEntity addFriendByUserId(String currentUserId, String targetUserId) {
         if (currentUserId.equals(targetUserId)) {
-            throw new IllegalStateException("자신과 친구가 될 수 없습니다.");
+            throw ConflictException.selfFriend();
         }
 
         String u1 = currentUserId.compareTo(targetUserId) < 0 ? currentUserId : targetUserId;
         String u2 = currentUserId.compareTo(targetUserId) < 0 ? targetUserId : currentUserId;
 
         if (friendJpaRepository.existsByUserId1AndUserId2(u1, u2)) {
-            throw new IllegalStateException("이미 친구입니다.");
+            throw ConflictException.alreadyFriend();
         }
 
         friendJpaRepository.save(FriendEntity.create(currentUserId, targetUserId));
 
         return userJpaRepository.findByMongoId(targetUserId)
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> NotFoundException.user(targetUserId));
     }
 
     @Transactional
@@ -93,7 +94,7 @@ public class FriendService {
         String u2 = currentUserId.compareTo(targetUserId) < 0 ? targetUserId : currentUserId;
 
         FriendEntity relation = friendJpaRepository.findByUserId1AndUserId2(u1, u2)
-                .orElseThrow(() -> new IllegalArgumentException("친구가 아닙니다."));
+                .orElseThrow(() -> NotFoundException.friend());
 
         friendJpaRepository.delete(relation);
 

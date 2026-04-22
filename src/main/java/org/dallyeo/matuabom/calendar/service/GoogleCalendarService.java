@@ -15,6 +15,7 @@ import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.auth.security.CustomPrincipal;
 import org.dallyeo.matuabom.auth.service.GoogleOAuthClientService;
+import org.dallyeo.matuabom.global.exception.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -281,7 +282,7 @@ public class GoogleCalendarService {
         ZoneId zone = DEFAULT_ZONE;
 
         Event existing = calendar.events().get("primary", eventId).execute();
-        if (existing == null) throw new IllegalArgumentException("event not found in Google: " + eventId);
+        if (existing == null) throw NotFoundException.calendarEvent(eventId);
 
         if (req.getTitle() != null)
             existing.setSummary(req.getTitle().isBlank() ? "(제목 없음)" : req.getTitle());
@@ -335,7 +336,7 @@ public class GoogleCalendarService {
         }
         repository.findById(eventId).ifPresent(ev -> {
             if (!Objects.equals(ev.getUserId(), userKey))
-                throw new IllegalStateException("권한 없음");
+                throw ForbiddenException.notResourceOwner();
             repository.deleteById(eventId);
         });
     }
@@ -388,9 +389,9 @@ public class GoogleCalendarService {
     public CalendarEventDto updateLocalEvent(String uid, String eventId, CreateEventReq req) {
         ZoneId zone = DEFAULT_ZONE;
         CalendarEventDto existing = repository.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("event not found: " + eventId));
+                .orElseThrow(() -> NotFoundException.calendarEvent(eventId));
         if (!existing.getUserId().equals(uid))
-            throw new IllegalStateException("권한 없음");
+            throw ForbiddenException.notResourceOwner();
 
         boolean allDay = Boolean.TRUE.equals(req.getAllDay()) || looksLikeDateOnly(req.getStart()) || existing.isAllDay();
 
@@ -437,7 +438,7 @@ public class GoogleCalendarService {
 
     public void deleteLocalEvent(String uid, String eventId) {
         repository.findById(eventId).ifPresent(ev -> {
-            if (!ev.getUserId().equals(uid)) throw new IllegalStateException("권한 없음");
+            if (!ev.getUserId().equals(uid)) throw ForbiddenException.notResourceOwner();
             repository.deleteById(eventId);
         });
     }

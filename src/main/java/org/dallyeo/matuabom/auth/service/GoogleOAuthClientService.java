@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
 import org.dallyeo.matuabom.calendar.repository.GoogleOAuthClientRepository;
 import org.dallyeo.matuabom.sse.service.EventSseService;
+import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.stereotype.Service;
@@ -73,7 +74,7 @@ public class GoogleOAuthClientService {
      */
     public String refreshAccessTokenIfExpired(String userId) throws IOException {
         GoogleOAuthClientEntity entity = repo.findByUserId(userId)
-                .orElseThrow(() -> new IllegalStateException("Google account not linked"));
+                .orElseThrow(() -> AuthException.googleAccountNotLinked());
 
         Instant now = Instant.now();
 
@@ -84,8 +85,7 @@ public class GoogleOAuthClientService {
         }
 
         if (entity.getRefreshToken() == null) {
-            // refresh token이 없으면 사용자가 다시 로그인해야 함
-            throw new IllegalStateException("NO_REFRESH_TOKEN");
+            throw AuthException.googleRefreshTokenMissing();
         }
 
         GoogleTokenResponse response;
@@ -98,10 +98,9 @@ public class GoogleOAuthClientService {
                     clientSecret
             ).execute();
         } catch (Exception e) {
-            // invalid_grant 등 refresh 불가능한 상태 — 사용자에게 재연동 요청 알림
             log.warn("Google token refresh failed for userId={}: {}", userId, e.getMessage());
             eventSseService.sendGoogleReauthRequired(userId);
-            throw new IllegalStateException("GOOGLE_REFRESH_FAILED", e);
+            throw ExternalApiException.googleRefreshFailed(e);
         }
 
         entity.setAccessToken(response.getAccessToken());

@@ -12,16 +12,23 @@ import java.time.Instant;
  *
  * 키 구조:
  *   refresh:{userId}          → refresh token 값 (TTL = refresh 유효기간)
- *   blacklist:{accessToken}   → "1"            (TTL = access token 잔여 유효기간)
+ *   blacklist:{jti}           → "1"            (TTL = access token 잔여 유효기간)
+ *   rf_blacklist:{jti}        → "1"            (TTL = refresh token 잔여 유효기간)
+ *   prev_jti:{userId}         → 이전 rotate된 refresh jti (TTL = 10s grace window)
  */
 @Component
 @RequiredArgsConstructor
 public class TokenStore {
 
-    private static final String PREFIX_REFRESH    = "refresh:";
-    private static final String PREFIX_BLACKLIST  = "blacklist:";
-    private static final String PREFIX_INVITE     = "invite:";
-    private static final String PREFIX_TOKEN_LOCK = "token_refresh_lock:";
+    private static final String PREFIX_REFRESH      = "refresh:";
+    private static final String PREFIX_BLACKLIST    = "blacklist:";
+    private static final String PREFIX_RF_BLACKLIST = "rf_blacklist:";
+    private static final String PREFIX_PREV_JTI     = "prev_jti:";
+    private static final String PREFIX_INVITE       = "invite:";
+    private static final String PREFIX_TOKEN_LOCK   = "token_refresh_lock:";
+    private static final String PREFIX_AUTH_CODE    = "auth_code:";
+
+    private static final long GRACE_WINDOW_SECONDS = 10L;
 
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -100,6 +107,50 @@ public class TokenStore {
         }
     }
 
+    // ── Refresh Token 블랙리스트 ───────────────────────────────────────────────
+
+    /**
+     * 로그아웃 또는 rotate 시 이전 refresh token jti를 블랙리스트에 등록.
+     * Redis 키: rf_blacklist:{jti} (TTL = refresh token 잔여 유효기간)
+     */
+    public void blacklistRefreshToken(String jti, Instant expiresAt) {
+        long remainingSeconds = expiresAt.getEpochSecond() - Instant.now().getEpochSecond();
+        if (remainingSeconds > 0) {
+            redisTemplate.opsForValue()
+                    .set(PREFIX_RF_BLACKLIST + jti, "1", Duration.ofSeconds(remainingSeconds));
+        }
+    }
+
+    public boolean isRefreshBlacklisted(String jti) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(PREFIX_RF_BLACKLIST + jti));
+    }
+
+    /**
+     * Redis 다운 시 false 반환 (스킵) — 가용성 우선
+     */
+    public boolean isRefreshBlacklistedSafe(String jti) {
+        try {
+            return isRefreshBlacklisted(jti);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ── prev_jti grace window ──────────────────────────────────────────────────
+
+    /**
+     * rotate 직후 이전 jti를 10초 grace window로 저장.
+     * 동시 요청 race condition에서 이전 토큰을 허용하기 위한 용도.
+     */
+    public void savePrevJti(String userId, String jti) {
+        redisTemplate.opsForValue()
+                .set(PREFIX_PREV_JTI + userId, jti, Duration.ofSeconds(GRACE_WINDOW_SECONDS));
+    }
+
+    public String getPrevJti(String userId) {
+        return redisTemplate.opsForValue().get(PREFIX_PREV_JTI + userId);
+    }
+
     // ── InviteCode 캐시 ────────────────────────────────────────────────────────
 
     /**
@@ -117,5 +168,28 @@ public class TokenStore {
 
     public void evictInviteCode(String code) {
         redisTemplate.delete(PREFIX_INVITE + code);
+    }
+
+    // ── 로그인 임시 코드 (one-time auth code) ─────────────────────────────────
+
+    /**
+     * 로그인 성공 후 access token을 임시 코드로 교환하기 위해 Redis에 저장.
+     * 키: auth_code:{code} → accessToken (TTL 30초, 1회용)
+     */
+    public void saveAuthCode(String code, String accessToken) {
+        redisTemplate.opsForValue()
+                .set(PREFIX_AUTH_CODE + code, accessToken, Duration.ofSeconds(30));
+    }
+
+    /**
+     * 임시 코드로 access token 조회 후 즉시 삭제 (1회용).
+     */
+    public String consumeAuthCode(String code) {
+        String key = PREFIX_AUTH_CODE + code;
+        String accessToken = redisTemplate.opsForValue().get(key);
+        if (accessToken != null) {
+            redisTemplate.delete(key);
+        }
+        return accessToken;
     }
 }

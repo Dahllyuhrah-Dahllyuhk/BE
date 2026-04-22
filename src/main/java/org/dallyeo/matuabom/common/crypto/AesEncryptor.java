@@ -1,5 +1,6 @@
 package org.dallyeo.matuabom.common.crypto;
 
+import org.dallyeo.matuabom.global.exception.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +32,7 @@ public class AesEncryptor {
         }
         byte[] keyBytes = Base64.getDecoder().decode(base64Key);
         if (keyBytes.length != 32) {
-            throw new IllegalArgumentException("ENCRYPT_KEY must be 32 bytes (Base64-encoded)");
+            throw BadRequestException.invalidEncryptKey();
         }
         this.secretKey = new SecretKeySpec(keyBytes, "AES");
     }

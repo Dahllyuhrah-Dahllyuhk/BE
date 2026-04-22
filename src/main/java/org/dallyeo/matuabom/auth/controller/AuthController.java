@@ -25,9 +25,9 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
-
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -52,30 +52,59 @@ public class AuthController {
         return ResponseEntity.ok(MeDto.createDto(user));
     }
 
+    /**
+     * 로그인 직후 FE가 임시 코드를 Access Token으로 교환하는 API.
+     * 코드는 30초 TTL + 1회용으로 Redis에 저장되어 있음.
+     */
+    @PostMapping("/api/auth/token")
+    public ResponseEntity<?> exchangeToken(@org.springframework.web.bind.annotation.RequestParam String code) {
+        String accessToken = tokenStore.consumeAuthCode(code);
+        if (accessToken == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "invalid_or_expired_code"));
+        }
+        return ResponseEntity.ok(Map.of("accessToken", accessToken));
+    }
+
+    /**
+     * 구글 캘린더 연동 시작 전 호출.
+     * OAuth 리다이렉트 후 SecurityContext가 교체되므로 세션에 userId를 미리 저장.
+     */
+    @PostMapping("/api/auth/prepare-google-link")
+    public ResponseEntity<Void> prepareGoogleLink(
+            HttpServletRequest request,
+            @AuthenticationPrincipal CustomPrincipal principal
+    ) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        HttpSession session = request.getSession(true);
+        session.setAttribute("pending_google_link_userId", principal.getUserId());
+        return ResponseEntity.ok().build();
+    }
+
     @PostMapping("/api/auth/logout")
     public ResponseEntity<Void> logout(
             HttpServletRequest request,
             HttpServletResponse response,
             @AuthenticationPrincipal CustomPrincipal principal
     ) {
-        // ① Access Token → Redis 블랙리스트 등록 (잔여 TTL만큼)
-        String accessToken = extractCookie(request, "ACCESS_TOKEN");
-        if (accessToken != null) {
+        // ① Refresh Token → rf_blacklist 등록 + Redis 삭제
+        String refreshToken = extractCookie(request, "REFRESH_TOKEN");
+        if (refreshToken != null) {
             try {
-                tokenStore.blacklistAccessToken(jwtUtil.getJti(accessToken), jwtUtil.getExpiration(accessToken));
+                tokenStore.blacklistRefreshToken(jwtUtil.getJti(refreshToken), jwtUtil.getExpiration(refreshToken));
             } catch (Exception e) {
-                log.warn("Failed to blacklist access token: {}", e.getMessage());
+                log.warn("Failed to blacklist refresh token: {}", e.getMessage());
             }
         }
-
-        // ② Refresh Token → Redis에서 삭제
         if (principal != null) {
             tokenStore.deleteRefreshToken(principal.getUserId());
         }
 
-        // ③ 쿠키 삭제 (Max-Age=0)
-        expireCookie(response, "ACCESS_TOKEN");
+        // ② Refresh Token 쿠키 삭제, ACCESS_TOKEN 잔여 쿠키도 정리
         expireCookie(response, "REFRESH_TOKEN");
+        expireCookie(response, "ACCESS_TOKEN");
 
         SecurityContextHolder.clearContext();
 
@@ -95,13 +124,11 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        String accessToken = extractCookie(request, "ACCESS_TOKEN");
+        userWithdrawalService.withdraw(principal.getUserId());
 
-        userWithdrawalService.withdraw(principal.getUserId(), accessToken);
-
-        // 쿠키 삭제
-        expireCookie(response, "ACCESS_TOKEN");
+        // Refresh Token 쿠키 삭제, ACCESS_TOKEN 잔여 쿠키도 정리
         expireCookie(response, "REFRESH_TOKEN");
+        expireCookie(response, "ACCESS_TOKEN");
 
         SecurityContextHolder.clearContext();
         HttpSession session = request.getSession(false);

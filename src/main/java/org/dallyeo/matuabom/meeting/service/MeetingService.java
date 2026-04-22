@@ -15,6 +15,7 @@ import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
 import org.dallyeo.matuabom.timetable.domain.TimetableItem;
+import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -101,7 +102,7 @@ public class MeetingService {
 
     public Meeting findById(String meetingId) {
         return meetingRepository.findById(meetingId)
-            .orElseThrow(() -> new IllegalArgumentException("Meeting not found: " + meetingId));
+            .orElseThrow(() -> NotFoundException.meeting(meetingId));
     }
 
     public boolean isParticipantOrHost(Meeting meeting, String userId) {
@@ -120,7 +121,7 @@ public class MeetingService {
         MeetingParticipant participant = meeting.getParticipants().stream()
             .filter(p -> p.getUserId().equals(userId))
             .findFirst()
-            .orElseThrow(() -> new SecurityException("User is not invited to this meeting."));
+            .orElseThrow(() -> ForbiddenException.notMeetingMember());
 
         if ("PENDING".equals(participant.getStatus())) {
             participant.setStatus("ACCEPTED");
@@ -300,7 +301,7 @@ public class MeetingService {
         MeetingParticipant participant = meeting.getParticipants().stream()
             .filter(p -> p.getUserId().equals(userId))
             .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("Participant not found"));
+            .orElseThrow(() -> NotFoundException.participant(userId));
 
         participant.setTimeStatuses(timeStatuses);
         recalculateParticipantSchedules(participant, meeting.getRequirement());
@@ -324,7 +325,7 @@ public class MeetingService {
         MeetingParticipant participant = meeting.getParticipants().stream()
             .filter(p -> p.getUserId().equals(userId))
             .findFirst()
-            .orElseThrow(() -> new IllegalArgumentException("Participant not found: " + userId));
+            .orElseThrow(() -> NotFoundException.participant(userId));
 
         if (partialUpdates == null || partialUpdates.isEmpty()) {
             return meeting;
@@ -393,7 +394,7 @@ public class MeetingService {
                     p.setReflectCalendar(reflectCalendar);
                     recalculateParticipantSchedules(p, meeting.getRequirement());
                 },
-                () -> { throw new IllegalArgumentException("Participant not found"); }
+                () -> { throw NotFoundException.participant("unknown"); }
             );
 
         return meetingRepository.save(meeting);
@@ -458,14 +459,14 @@ public class MeetingService {
             !(newStatus.equals(MeetingStatus.PENDING.name())
             || newStatus.equals(MeetingStatus.CONFIRMED.name())
             || newStatus.equals(MeetingStatus.CLOSED.name()))) {
-            throw new IllegalArgumentException("Invalid status: " + newStatus);
+            throw BadRequestException.invalidMeetingStatus(newStatus);
         }
 
         String oldStatus = meeting.getStatus();
 
         if ("CONFIRMED".equals(newStatus)) {
             if (request.getConfirmedStart() == null) {
-                throw new IllegalArgumentException("confirmedStart is required when status=CONFIRMED");
+                throw BadRequestException.confirmedStartRequired();
             }
             try {
                 Instant start = OffsetDateTime.parse(request.getConfirmedStart()).toInstant();
@@ -474,7 +475,7 @@ public class MeetingService {
                 if (request.getConfirmedEnd() != null) {
                     Instant end = OffsetDateTime.parse(request.getConfirmedEnd()).toInstant();
                     if (!end.isAfter(start)) {
-                        throw new IllegalArgumentException("confirmedEnd must be after confirmedStart");
+                        throw BadRequestException.confirmedEndBeforeStart();
                     }
                     meeting.setConfirmedEnd(end);
                 } else {
@@ -482,7 +483,7 @@ public class MeetingService {
                         .plusDays(1).atStartOfDay(ZONE_SEOUL).toInstant());
                 }
             } catch (DateTimeParseException e) {
-                throw new IllegalArgumentException("Invalid date format for confirmedStart/confirmedEnd", e);
+                throw BadRequestException.invalidDateFormat(e);
             }
         } else if ("PENDING".equals(newStatus)) {
             meeting.setConfirmedStart(null);
@@ -572,7 +573,7 @@ public class MeetingService {
                 if (googleOAuthClientService.isLinked(uid)) {
                     GoogleOAuthClientEntity tokens = googleOAuthClientService
                         .getTokens(uid)
-                        .orElseThrow(() -> new IllegalStateException("Google token not found for user: " + uid));
+                        .orElseThrow(() -> NotFoundException.googleToken(uid));
                     CalendarEventDto dto = googleCalendarService.createGoogleEvent(tokens, uid, req);
                     googleCalendarService.attachMeetingId(dto, meeting.getId());
                 } else {
@@ -580,7 +581,7 @@ public class MeetingService {
                     googleCalendarService.attachMeetingId(dto, meeting.getId());
                 }
             } catch (GeneralSecurityException | IOException e) {
-                throw new IllegalStateException("Failed to create calendar event for user " + uid, e);
+                throw ExternalApiException.calendarEventCreateFailed(uid, e);
             }
         }
     }
@@ -600,7 +601,7 @@ public class MeetingService {
             String code = sb.toString();
             if (!meetingRepository.existsByInviteCode(code)) return code;
         }
-        throw new IllegalStateException("초대코드 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        throw ConflictException.inviteCodeGenerationFailed();
     }
 
     // -------------------------------------------------------------------------
@@ -613,7 +614,7 @@ public class MeetingService {
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
                 Meeting meeting = meetingRepository.findByInviteCode(inviteCode.toUpperCase())
-                    .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 초대 코드입니다."));
+                    .orElseThrow(() -> NotFoundException.inviteCode(inviteCode));
 
                 if (!"PENDING".equals(meeting.getStatus())) {
                     throw new IllegalStateException("조율 중인 모임에만 참여할 수 있습니다.");
@@ -626,7 +627,7 @@ public class MeetingService {
                 }
 
                 UserEntity user = userRepository.findByMongoId(userId)
-                    .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                    .orElseThrow(() -> NotFoundException.user(userId));
 
                 MeetingParticipant newParticipant = new MeetingParticipant();
                 newParticipant.setUserId(userId);

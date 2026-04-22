@@ -6,6 +6,7 @@ import org.dallyeo.matuabom.timetable.domain.TimetableItemEntity;
 import org.dallyeo.matuabom.timetable.domain.TimetableItem;
 import org.dallyeo.matuabom.timetable.dto.TimetableItemRequest;
 import org.dallyeo.matuabom.timetable.repository.jpa.TimetableJpaRepository;
+import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -91,7 +92,7 @@ public class TimetableService {
         TimetableItemEntity target = timetable.getItems().stream()
                 .filter(i -> i.getId().equals(itemId))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("수업을 찾을 수 없습니다."));
+                .orElseThrow(() -> NotFoundException.timetableItem());
 
         int newStart = timeToMinutes(dto.getStartTime());
         int newEnd   = timeToMinutes(dto.getEndTime());
@@ -114,7 +115,7 @@ public class TimetableService {
         TimetableEntity timetable = getTimetableOwned(userId, timetableId);
 
         boolean removed = timetable.getItems().removeIf(i -> i.getId().equals(itemId));
-        if (!removed) throw new IllegalArgumentException("삭제할 수업을 찾을 수 없습니다.");
+        if (!removed) throw BadRequestException.timetableItemNotFound();
 
         return timetableJpaRepository.save(timetable);
     }
@@ -140,15 +141,15 @@ public class TimetableService {
 
     private TimetableEntity getTimetableOwned(String userId, Long timetableId) {
         TimetableEntity t = timetableJpaRepository.findById(timetableId)
-                .orElseThrow(() -> new IllegalArgumentException("시간표를 찾을 수 없습니다."));
+                .orElseThrow(() -> NotFoundException.timetable());
         if (!t.getUserId().equals(userId))
-            throw new IllegalArgumentException("권한이 없습니다.");
+            throw ForbiddenException.notResourceOwner();
         return t;
     }
 
     private void validateTimeRange(int startMinutes, int endMinutes) {
         if (startMinutes >= endMinutes)
-            throw new IllegalArgumentException("종료 시간이 시작 시간보다 늦어야 합니다.");
+            throw BadRequestException.invalidTimeRange();
     }
 
     private void checkOverlap(
@@ -161,8 +162,7 @@ public class TimetableService {
             int s = timeToMinutes(item.getStartTime());
             int e = timeToMinutes(item.getEndTime());
             if (s < newEnd && e > newStart)
-                throw new IllegalArgumentException(
-                        String.format("[%s] 수업과 시간이 겹칩니다.", item.getTitle()));
+                throw BadRequestException.overlappingTimetable();
         }
     }
 
