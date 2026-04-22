@@ -16,7 +16,7 @@ public class NotFoundException extends AppException {
     }
 
     public static NotFoundException user(String userId) {
-        return new NotFoundException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다: " + userId);
+        return new NotFoundException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.");
     }
 
     public static NotFoundException calendarEvent(String eventId) {
@@ -24,11 +24,11 @@ public class NotFoundException extends AppException {
     }
 
     public static NotFoundException participant(String userId) {
-        return new NotFoundException("PARTICIPANT_NOT_FOUND", "참여자를 찾을 수 없습니다: " + userId);
+        return new NotFoundException("PARTICIPANT_NOT_FOUND", "참여자를 찾을 수 없습니다.");
     }
 
     public static NotFoundException inviteCode(String code) {
-        return new NotFoundException("INVITE_CODE_NOT_FOUND", "유효하지 않은 초대 코드입니다: " + code);
+        return new NotFoundException("INVITE_CODE_NOT_FOUND", "유효하지 않은 초대 코드입니다.");
     }
 
     public static NotFoundException timetable() {
@@ -44,6 +44,6 @@ public class NotFoundException extends AppException {
     }
 
     public static NotFoundException googleToken(String userId) {
-        return new NotFoundException("GOOGLE_TOKEN_NOT_FOUND", "Google 토큰이 없습니다: " + userId);
+        return new NotFoundException("GOOGLE_TOKEN_NOT_FOUND", "Google 토큰이 없습니다.");
     }
 }

@@ -63,7 +63,9 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "invalid_or_expired_code"));
         }
-        return ResponseEntity.ok(Map.of("accessToken", accessToken));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(Map.of("accessToken", accessToken));
     }
 
     /**

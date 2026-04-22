@@ -37,10 +37,6 @@ public class BadRequestException extends AppException {
         return new BadRequestException("OVERLAPPING_TIMETABLE", "시간표가 겹칩니다.");
     }
 
-    public static BadRequestException timetableItemNotFound() {
-        return new BadRequestException("TIMETABLE_ITEM_NOT_FOUND", "삭제할 수업을 찾을 수 없습니다.");
-    }
-
     public static BadRequestException invalidAiResponse(String category) {
         return new BadRequestException("INVALID_AI_RESPONSE", "AI 응답 데이터가 올바르지 않습니다. category: " + category);
     }

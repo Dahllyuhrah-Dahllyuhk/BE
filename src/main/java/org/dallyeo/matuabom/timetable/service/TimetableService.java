@@ -115,7 +115,7 @@ public class TimetableService {
         TimetableEntity timetable = getTimetableOwned(userId, timetableId);
 
         boolean removed = timetable.getItems().removeIf(i -> i.getId().equals(itemId));
-        if (!removed) throw BadRequestException.timetableItemNotFound();
+        if (!removed) throw NotFoundException.timetableItem();
 
         return timetableJpaRepository.save(timetable);
     }

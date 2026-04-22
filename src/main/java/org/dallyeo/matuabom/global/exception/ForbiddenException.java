@@ -16,8 +16,4 @@ public class ForbiddenException extends AppException {
     public static ForbiddenException notResourceOwner() {
         return new ForbiddenException("NOT_RESOURCE_OWNER", "리소스에 대한 권한이 없습니다.");
     }
-
-    public static ForbiddenException notAuthenticated() {
-        return new ForbiddenException("NOT_AUTHENTICATED", "인증된 사용자가 아닙니다.");
-    }
 }
