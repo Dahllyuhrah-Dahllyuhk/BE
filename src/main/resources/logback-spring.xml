@@ -8,6 +8,47 @@
         </encoder>
     </appender>
 
+    <!-- ================================================================
+         로컬 환경 — ELK 연동 (Logstash TCP + JSON)
+         SPRING_PROFILES_ACTIVE=local 로 실행 시 활성
+         ================================================================ -->
+    <springProfile name="local">
+
+        <!-- JSON 파일 appender: Logstash가 이 파일을 polling -->
+        <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>./logs/matuabom.json</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>./logs/matuabom.%d{yyyy-MM-dd}.%i.json.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>7</maxHistory>
+                <totalSizeCap>500MB</totalSizeCap>
+            </rollingPolicy>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <!-- 공통 필드 -->
+                <customFields>{"app":"matuabom","env":"local"}</customFields>
+                <!-- 민감 필드 마스킹 -->
+                <fieldNames>
+                    <timestamp>@timestamp</timestamp>
+                    <version>[ignore]</version>
+                </fieldNames>
+            </encoder>
+        </appender>
+
+        <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+            <queueSize>512</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <appender-ref ref="JSON_FILE"/>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_JSON"/>
+        </root>
+        <logger name="org.dallyeo.matuabom" level="DEBUG"/>
+        <logger name="org.springframework.security" level="INFO"/>
+
+    </springProfile>
+
     <!-- 개발 환경 -->
     <springProfile name="dev">
         <root level="INFO">
@@ -52,7 +93,7 @@
     </springProfile>
 
     <!-- 기본 (프로파일 미지정) -->
-    <springProfile name="!dev &amp; !prod">
+    <springProfile name="!local &amp; !dev &amp; !prod">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
         </root>
