@@ -60,6 +60,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/google/webhook").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/token").permitAll()
+                        .requestMatchers("/api/sse/**").permitAll()  // SSE: 컨트롤러가 자체 인증 처리
                         .requestMatchers("/api/admin/**").permitAll()
                         .requestMatchers("/api/chat/**").denyAll()  // AI 기능 비활성화
                         .requestMatchers("/api/**").authenticated()
