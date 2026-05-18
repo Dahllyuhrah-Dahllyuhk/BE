@@ -96,6 +96,19 @@ jobs:
           done
 
       # ── 8. 배포 ──────────────────────────────────────────────────────────
+      - name: Get GitHub Actions IP
+        id: ip
+        run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS Security Group Allow
+        if: github.ref_name == 'main'
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.AWS_SG_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.ip.outputs.ipv4 }}/32
+
       - name: Deploy to EC2
         if: github.ref_name == 'main'
         uses: appleboy/ssh-action@v1.0.3
@@ -134,3 +147,12 @@ jobs:
             done
 
             docker image prune -f
+
+      - name: Configure AWS Security Group Revoke
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.AWS_SG_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.ip.outputs.ipv4 }}/32
