@@ -1,0 +1,22 @@
+# 운영 환경 전용 설정
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:validate}
+    show-sql: false
+
+app:
+  cookie-secure: true
+
+# 운영에서 Swagger UI 비활성화
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+
+logging:
+  level:
+    root: WARN
+    org.dallyeo.matuabom: INFO
+    org.springframework.security: WARN

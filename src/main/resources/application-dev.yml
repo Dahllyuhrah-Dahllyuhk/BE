@@ -1,0 +1,15 @@
+# 개발 환경 전용 설정
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+app:
+  cookie-secure: false
+
+logging:
+  level:
+    root: INFO
+    org.dallyeo.matuabom: DEBUG
+    org.springframework.security: DEBUG

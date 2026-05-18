@@ -5,6 +5,45 @@ spring:
   application:
     name: matuabom
 
+  # ── MongoDB (Meeting, CalendarEvent, GoogleOAuthClient) ──────────────
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+      database: ${MONGODB_NAME:matuabom}
+
+    # ── Redis (RefreshToken, InviteCode 캐시, 블랙리스트) ──────────────
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+
+  # ── PostgreSQL (User, Friend, InviteCode, Timetable) ─────────────────
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/matuabom}
+    username: ${POSTGRES_USER:matuabom}
+    password: ${POSTGRES_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: ${DDL_AUTO:none}   # 반드시 환경변수로 명시 (local/dev: update, prod: validate)
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  # ── OAuth2 ────────────────────────────────────────────────────────────
   security:
     oauth2:
       client:
@@ -29,7 +68,6 @@ spring:
             scope:
               - profile_nickname
               - profile_image
-              - friends
             client-authentication-method: client_secret_post
             provider: kakao
 
@@ -46,6 +84,42 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
 
+# ── Gemini AI ─────────────────────────────────────────────────────────
+gemini:
+  api:
+    key: ${GEMINI_API_KEY}
+
+# ── App 설정 ──────────────────────────────────────────────────────────
 app:
   frontend-base-url: ${FRONTEND_ORIGIN:http://localhost:3000}
   backend-base-url: ${BACKEND_BASE_URL:http://localhost:8080}
+  cookie-secure: ${COOKIE_SECURE:false}
+  admin-secret: ${ADMIN_SECRET:admin1234}
+  encrypt-key: ${ENCRYPT_KEY:}  # 누락 시 AesEncryptor 내부 개발용 기본키 사용 (운영은 반드시 설정)
+  google-webhook-token: ${GOOGLE_WEBHOOK_TOKEN:}
+  jwt:
+    access-token-seconds: 7200        # 2시간
+    refresh-token-seconds: 2592000    # 30일
+
+# ── Actuator (헬스체크 전용) ───────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true   # /actuator/health/liveness, /actuator/health/readiness 활성화
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+    db:
+      enabled: true     # PostgreSQL 연결 확인
+    mongo:
+      enabled: true     # MongoDB 연결 확인
+    redis:
+      enabled: true     # Redis 연결 확인

@@ -14,6 +14,10 @@ java {
     }
 }
 
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
@@ -32,13 +36,16 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'           // RESTful API, 내장 톰캣 등 웹 기능
     implementation 'org.springframework.boot:spring-boot-starter-webflux'      // 비동기/논블로킹 웹 (WebClient 등)
     implementation 'org.springframework.boot:spring-boot-starter-validation'   // 유효성 검사 (Jakarta Validation API)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'     // 헬스체크 (/actuator/health)
+    implementation 'io.micrometer:micrometer-registry-prometheus'              // Prometheus 메트릭 노출 (/actuator/prometheus)
 
     // -------------------------------------------------------------------------
     // 💾 Data Persistence (데이터베이스)
     // -------------------------------------------------------------------------
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb' // MongoDB 연동
-//    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'     // (선택 사항) RDB (JPA) 연동
-//    implementation 'org.springframework.boot:spring-boot-starter-data-redis'   // (선택 사항) Redis 연동
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'   // Redis 연동 (토큰, 캐시)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'     // PostgreSQL JPA 연동
+    runtimeOnly 'org.postgresql:postgresql'                                     // PostgreSQL 드라이버
 
     // -------------------------------------------------------------------------
     // 🔐 Security & Authorization
@@ -63,6 +70,17 @@ dependencies {
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9'   // API 문서화 (Swagger UI)
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'    // Java 8 Date/Time 객체 JSON 처리 지원
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'                        // .env 파일 환경 변수 로드
+    implementation 'com.bucket4j:bucket4j-core:8.10.1'                         // Rate Limiting
+
+    // -------------------------------------------------------------------------
+    // 📋 Logging (ELK 연동)
+    // -------------------------------------------------------------------------
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.0'         // JSON 형식 로그 (Logstash 전송용)
+
+    // -------------------------------------------------------------------------
+    // 📊 Metrics (Prometheus 연동)
+    // -------------------------------------------------------------------------
+    implementation 'io.micrometer:micrometer-registry-prometheus'               // /actuator/prometheus 엔드포인트
 
     // Lombok (컴파일 시 자동 코드 생성)
     compileOnly 'org.projectlombok:lombok'
@@ -72,7 +90,8 @@ dependencies {
     // 🧪 Testing
     // -------------------------------------------------------------------------
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'     // Spring Security 테스트 지원
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'com.h2database:h2'                                         // 테스트용 인메모리 DB
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
