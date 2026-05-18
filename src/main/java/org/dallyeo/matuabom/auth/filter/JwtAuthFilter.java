@@ -92,7 +92,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 if (tokenStore.acquireTokenRefreshLock(userId)) {
                     try {
                         // 1. 명시적 폐기(로그아웃) 확인 — rf_blacklist에 있으면 차단
+                        //    단, grace window 내 이전 토큰(동시 rotate race condition)은 허용
                         if (tokenStore.isRefreshBlacklistedSafe(refreshJti)) {
+                            String prevJti = tokenStore.getPrevJti(userId);
+                            if (refreshJti.equals(prevJti)) {
+                                // 동시 요청으로 인한 race condition — grace window 내 이전 토큰 허용
+                                log.debug("Lock-branch grace window hit for userId={}", userId);
+                                setAuthentication(request, userId);
+                                filterChain.doFilter(request, response);
+                                return;
+                            }
                             log.warn("Blacklisted refresh token used. userId={}", userId);
                             clearContext(response);
                             filterChain.doFilter(request, response);
