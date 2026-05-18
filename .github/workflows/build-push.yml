@@ -95,13 +95,13 @@ jobs:
             echo "삭제: $DIGEST"
           done
 
-      # ── 8. 배포 ──────────────────────────────────────────────────────────
+      # ── 8. GitHub Actions IP 추출 ────────────────────────────────────────
       - name: Get GitHub Actions IP
         id: ip
         run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
 
+      # ── 9. 보안 그룹 22번 포트 일시 개방 ────────────────────────────────
       - name: Configure AWS Security Group Allow
-        if: github.ref_name == 'main'
         run: |
           aws ec2 authorize-security-group-ingress \
             --group-id ${{ secrets.AWS_SG_ID }} \
@@ -109,8 +109,8 @@ jobs:
             --port 22 \
             --cidr ${{ steps.ip.outputs.ipv4 }}/32
 
+      # ── 10. EC2 배포 ─────────────────────────────────────────────────────
       - name: Deploy to EC2
-        if: github.ref_name == 'main'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.DEPLOY_HOST }}
@@ -148,8 +148,9 @@ jobs:
 
             docker image prune -f
 
+      # ── 11. 보안 그룹 22번 포트 차단 (항상 실행) ─────────────────────────
       - name: Configure AWS Security Group Revoke
-        if: always()
+        if: always() && steps.ip.outputs.ipv4 != ''
         run: |
           aws ec2 revoke-security-group-ingress \
             --group-id ${{ secrets.AWS_SG_ID }} \
