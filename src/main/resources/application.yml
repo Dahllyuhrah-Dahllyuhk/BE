@@ -36,7 +36,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: ${DDL_AUTO:update}   # dev: update / prod: validate (application-prod.yml에서 override)
+      ddl-auto: ${DDL_AUTO:none}   # 반드시 환경변수로 명시 (local/dev: update, prod: validate)
     show-sql: false
     properties:
       hibernate:
