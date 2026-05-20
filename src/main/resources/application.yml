@@ -84,11 +84,6 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
 
-# ── Gemini AI ─────────────────────────────────────────────────────────
-gemini:
-  api:
-    key: ${GEMINI_API_KEY}
-
 # ── App 설정 ──────────────────────────────────────────────────────────
 app:
   frontend-base-url: ${FRONTEND_ORIGIN:http://localhost:3000}
