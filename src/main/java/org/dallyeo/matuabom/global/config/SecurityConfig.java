@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.auth.filter.JwtAuthFilter;
 import org.dallyeo.matuabom.auth.handler.JwtLoginSuccessHandler;
 import org.dallyeo.matuabom.auth.service.KakaoOAuth2UserService;
+import org.dallyeo.matuabom.global.filter.AdminSecretFilter;
 import org.dallyeo.matuabom.global.filter.RateLimitFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,6 +37,7 @@ public class SecurityConfig {
     private final JwtLoginSuccessHandler jwtLoginSuccessHandler;
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final AdminSecretFilter adminSecretFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -61,7 +63,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/token").permitAll()
                         .requestMatchers("/api/admin/**").permitAll()
-                        .requestMatchers("/api/chat/**").denyAll()  // AI 기능 비활성화
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
                 )
@@ -84,6 +85,7 @@ public class SecurityConfig {
                 )
                 .oauth2Client(Customizer.withDefaults())
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(adminSecretFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(jwtAuthFilter, OAuth2LoginAuthenticationFilter.class);
 
         return http.build();
