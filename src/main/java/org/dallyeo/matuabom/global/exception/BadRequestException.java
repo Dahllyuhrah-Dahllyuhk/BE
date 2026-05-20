@@ -37,10 +37,6 @@ public class BadRequestException extends AppException {
         return new BadRequestException("OVERLAPPING_TIMETABLE", "시간표가 겹칩니다.");
     }
 
-    public static BadRequestException invalidAiResponse(String category) {
-        return new BadRequestException("INVALID_AI_RESPONSE", "AI 응답 데이터가 올바르지 않습니다. category: " + category);
-    }
-
     public static BadRequestException invalidEncryptKey() {
         return new BadRequestException("INVALID_ENCRYPT_KEY", "암호화 키가 올바르지 않습니다. 32바이트(Base64 인코딩)여야 합니다.");
     }

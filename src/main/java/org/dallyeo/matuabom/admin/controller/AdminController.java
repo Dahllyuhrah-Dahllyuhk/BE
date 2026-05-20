@@ -5,8 +5,6 @@ import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.calendar.service.WatchChannelRenewalService;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,20 +23,10 @@ public class AdminController {
     private final CalendarEventRepository calendarEventRepository;
     private final WatchChannelRenewalService watchChannelRenewalService;
 
-    @Value("${app.admin-secret:admin1234}")
-    private String adminSecret;
-
-    /** 관리자 인증: 요청 헤더 X-Admin-Secret 으로 검증 */
-    private boolean isAuthorized(String secret) {
-        return adminSecret.equals(secret);
-    }
-
     // ── 대시보드 종합 통계 ─────────────────────────────────────────────
 
     @GetMapping("/dashboard")
-    public ResponseEntity<?> dashboard(@RequestHeader(value = "X-Admin-Secret", required = false) String secret) {
-        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
-
+    public ResponseEntity<?> dashboard() {
         long totalUsers    = userRepository.count();
         long totalMeetings = meetingRepository.count();
         long totalEvents   = calendarEventRepository.count();
@@ -83,12 +71,9 @@ public class AdminController {
 
     @GetMapping("/users")
     public ResponseEntity<?> users(
-            @RequestHeader(value = "X-Admin-Secret", required = false) String secret,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
-
         var all = userRepository.findAll();
         int total = all.size();
         int from  = Math.min(page * size, total);
@@ -123,12 +108,9 @@ public class AdminController {
 
     @GetMapping("/meetings")
     public ResponseEntity<?> meetings(
-            @RequestHeader(value = "X-Admin-Secret", required = false) String secret,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
-        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
-
         var all = meetingRepository.findAll();
         int total = all.size();
 
@@ -165,11 +147,7 @@ public class AdminController {
     // ── 일별 신규 가입자 추이 (최근 30일) ────────────────────────────
 
     @GetMapping("/stats/signups")
-    public ResponseEntity<?> signupTrend(
-            @RequestHeader(value = "X-Admin-Secret", required = false) String secret
-    ) {
-        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
-
+    public ResponseEntity<?> signupTrend() {
         ZoneId zone = ZoneId.of("Asia/Seoul");
         LocalDate today = LocalDate.now(zone);
         Instant since = today.minusDays(29).atStartOfDay(zone).toInstant();
@@ -195,10 +173,7 @@ public class AdminController {
     // ── 일별 모임 생성 추이 (최근 30일) ──────────────────────────────
 
     @GetMapping("/stats/meetings")
-    public ResponseEntity<?> meetingTrend(            @RequestHeader(value = "X-Admin-Secret", required = false) String secret
-    ) {
-        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
-
+    public ResponseEntity<?> meetingTrend() {
         ZoneId zone = ZoneId.of("Asia/Seoul");
         LocalDate today = LocalDate.now(zone);
 
@@ -223,10 +198,7 @@ public class AdminController {
     // ── Google Watch 채널 즉시 갱신 ───────────────────────────────────
 
     @PostMapping("/watch-channels/renew")
-    public ResponseEntity<?> renewWatchChannels(
-            @RequestHeader(value = "X-Admin-Secret", required = false) String secret
-    ) {
-        if (!isAuthorized(secret)) return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden");
+    public ResponseEntity<?> renewWatchChannels() {
         watchChannelRenewalService.renewExpiringChannels();
         return ResponseEntity.ok(Map.of("message", "Watch channel renewal triggered"));
     }
