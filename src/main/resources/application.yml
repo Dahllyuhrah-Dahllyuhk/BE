@@ -89,7 +89,7 @@ app:
   frontend-base-url: ${FRONTEND_ORIGIN:http://localhost:3000}
   backend-base-url: ${BACKEND_BASE_URL:http://localhost:8080}
   cookie-secure: ${COOKIE_SECURE:false}
-  admin-secret: ${ADMIN_SECRET:admin1234}
+  admin-secret: ${ADMIN_SECRET}
   encrypt-key: ${ENCRYPT_KEY:}  # 누락 시 AesEncryptor 내부 개발용 기본키 사용 (운영은 반드시 설정)
   google-webhook-token: ${GOOGLE_WEBHOOK_TOKEN:}
   jwt:
