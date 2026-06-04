@@ -547,13 +547,17 @@ public class MeetingService {
 
         ZonedDateTime startZdt = start.atZone(ZONE_SEOUL);
         ZonedDateTime endZdt = end.atZone(ZONE_SEOUL);
-        String startStr = startZdt.toOffsetDateTime().toString();
-        String endStr = endZdt.toOffsetDateTime().toString();
 
         // 종일 여부: 시작이 자정이고 종료가 다음날 자정인 경우
         boolean isAllDay = startZdt.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)
             && endZdt.toLocalTime().equals(java.time.LocalTime.MIDNIGHT)
             && !startZdt.toLocalDate().equals(endZdt.toLocalDate());
+
+        // 종일이면 날짜 문자열("yyyy-MM-dd"), 비종일이면 UTC ISO 문자열("yyyy-MM-dd'T'HH:mm:ss'Z'")을 사용
+        // toOffsetDateTime().toString()은 초를 생략("HH:mm+09:00")할 수 있어 createLocalEvent/buildGoogleEvent의
+        // looksLikeDateOnly() 판별 실패 → LocalDate.now() fallback으로 오늘 날짜로 저장되는 버그 방지
+        String startStr = isAllDay ? startZdt.toLocalDate().toString() : start.toString();
+        String endStr   = isAllDay ? endZdt.toLocalDate().toString()   : end.toString();
 
         for (MeetingParticipant participant : meeting.getParticipants()) {
             if (!"ACCEPTED".equals(participant.getStatus())) continue;
