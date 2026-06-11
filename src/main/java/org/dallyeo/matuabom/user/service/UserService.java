@@ -58,6 +58,15 @@ public class UserService {
         return user.getMongoId() != null ? user.getMongoId() : String.valueOf(user.getId());
     }
 
+    /** 현재 약관 버전에 대한 동의를 기록한다. */
+    @Transactional
+    public void agreeTerms(String userId) {
+        UserEntity user = findById(userId);
+        user.setTermsAgreedAt(java.time.Instant.now());
+        user.setTermsVersion(UserEntity.CURRENT_TERMS_VERSION);
+        userJpaRepository.save(user);
+    }
+
     @Transactional
     public void linkGoogleEmail(String userId, String googleEmail) {
         UserEntity user = findById(userId);
