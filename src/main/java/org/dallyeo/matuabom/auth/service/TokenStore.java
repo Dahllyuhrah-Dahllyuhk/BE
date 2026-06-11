@@ -23,12 +23,14 @@ public class TokenStore {
     private static final String PREFIX_REFRESH      = "refresh:";
     private static final String PREFIX_BLACKLIST    = "blacklist:";
     private static final String PREFIX_RF_BLACKLIST = "rf_blacklist:";
-    private static final String PREFIX_PREV_JTI     = "prev_jti:";
+    private static final String PREFIX_GRACE        = "grace_jti:";
     private static final String PREFIX_INVITE       = "invite:";
     private static final String PREFIX_TOKEN_LOCK   = "token_refresh_lock:";
     private static final String PREFIX_AUTH_CODE    = "auth_code:";
 
-    private static final long GRACE_WINDOW_SECONDS = 10L;
+    // 회전 직후 grace window. 이 시간 내에 도착한 이전(직전 N세대) refresh 요청은
+    // 정상 동시성으로 보고 거부 대신 현재 토큰으로 수렴시킨다.
+    private static final long GRACE_WINDOW_SECONDS = 30L;
 
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -136,19 +138,35 @@ public class TokenStore {
         }
     }
 
-    // ── prev_jti grace window ──────────────────────────────────────────────────
+    // ── grace window (회전된 jti → 현재 refresh token) ──────────────────────────
 
     /**
-     * rotate 직후 이전 jti를 10초 grace window로 저장.
-     * 동시 요청 race condition에서 이전 토큰을 허용하기 위한 용도.
+     * rotate 직후 "회전되어 사라진" jti를 grace 키로 기록한다.
+     * 값으로 회전 결과의 "현재" refresh token을 저장해, grace 내에 도착한 이전 토큰 요청을
+     * 거부하지 않고 현재 토큰으로 수렴시킬 수 있게 한다.
+     * 각 jti가 독립 키(TTL 30s)라 직전 2세대 이상의 동시 회전도 자연히 관용된다.
      */
-    public void savePrevJti(String userId, String jti) {
+    public void markGraceJti(String oldJti, String currentRefreshToken) {
         redisTemplate.opsForValue()
-                .set(PREFIX_PREV_JTI + userId, jti, Duration.ofSeconds(GRACE_WINDOW_SECONDS));
+                .set(PREFIX_GRACE + oldJti, currentRefreshToken, Duration.ofSeconds(GRACE_WINDOW_SECONDS));
     }
 
-    public String getPrevJti(String userId) {
-        return redisTemplate.opsForValue().get(PREFIX_PREV_JTI + userId);
+    /**
+     * grace window 내에 회전된 jti면 "현재" refresh token을 반환, 아니면 null.
+     */
+    public String getGraceCurrentToken(String oldJti) {
+        return redisTemplate.opsForValue().get(PREFIX_GRACE + oldJti);
+    }
+
+    /**
+     * Redis 다운 시 null 반환 (grace 미적용) — 안전 측.
+     */
+    public String getGraceCurrentTokenSafe(String oldJti) {
+        try {
+            return getGraceCurrentToken(oldJti);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ── InviteCode 캐시 ────────────────────────────────────────────────────────
