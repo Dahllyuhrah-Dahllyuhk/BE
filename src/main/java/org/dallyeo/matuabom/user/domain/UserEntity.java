@@ -30,6 +30,9 @@ import java.time.Instant;
 @AllArgsConstructor
 public class UserEntity {
 
+    /** 현재 약관/개인정보처리방침 버전. 개정 시 이 값을 올리면 재동의를 받는다. */
+    public static final String CURRENT_TERMS_VERSION = "1";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -53,6 +56,14 @@ public class UserEntity {
     @Column(name = "google_linked")
     @Builder.Default
     private boolean googleLinked = false;
+
+    /** 약관/개인정보 동의 시각 (미동의 시 null) */
+    @Column(name = "terms_agreed_at")
+    private Instant termsAgreedAt;
+
+    /** 동의한 약관 버전 */
+    @Column(name = "terms_version", length = 20)
+    private String termsVersion;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

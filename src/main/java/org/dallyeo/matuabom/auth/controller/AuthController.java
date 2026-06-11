@@ -38,6 +38,7 @@ public class AuthController {
     private final TokenStore tokenStore;
     private final JwtUtil jwtUtil;
     private final UserWithdrawalService userWithdrawalService;
+    private final org.dallyeo.matuabom.user.service.UserService userService;
 
     @Value("${app.cookie-secure:false}")
     private boolean cookieSecure;
@@ -50,6 +51,18 @@ public class AuthController {
         UserEntity user = userRepository.findByMongoId(principal.getUserId())
                 .orElseThrow(() -> new UsernameNotFoundException("user not found"));
         return ResponseEntity.ok(MeDto.createDto(user));
+    }
+
+    /**
+     * 약관/개인정보처리방침 동의를 서버에 기록한다 (최초 1회).
+     */
+    @PostMapping("/api/auth/terms")
+    public ResponseEntity<Void> agreeTerms(@AuthenticationPrincipal CustomPrincipal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        userService.agreeTerms(principal.getUserId());
+        return ResponseEntity.ok().build();
     }
 
     /**
