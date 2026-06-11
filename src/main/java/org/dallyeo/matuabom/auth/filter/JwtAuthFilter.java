@@ -46,17 +46,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String accessToken  = extractBearerToken(request);
         String refreshToken = extractCookie(request, "REFRESH_TOKEN");
 
-        // ① Access Token 유효 + 블랙리스트에 없는 경우 → 정상 인증
+        // ① Access Token 유효 → 정상 인증
         if (accessToken != null) {
             try {
-                String jti = jwtUtil.getJti(accessToken);
-
-                if (tokenStore.isBlacklistedSafe(jti)) {
-                    clearContext(response);
-                    filterChain.doFilter(request, response);
-                    return;
-                }
-
                 String userId = jwtUtil.validateAndGetSub(accessToken);
 
                 if (!"access".equals(jwtUtil.getTokenType(accessToken))) {
@@ -96,9 +88,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                             String newAccessToken  = jwtUtil.createAccessToken(userId);
                             String newRefreshToken = jwtUtil.createRefreshToken(userId);
 
-                            // 회전되어 사라진 jti를 grace에 기록(값=새 토큰) + 보안용 장기 블랙리스트
+                            // 회전되어 사라진 jti를 grace window에 기록(값=새 토큰) — 직전 토큰을 든 정상 동시 요청을 현재 토큰으로 수렴
                             tokenStore.markGraceJti(refreshJti, newRefreshToken);
-                            tokenStore.blacklistRefreshToken(refreshJti, jwtUtil.getExpiration(refreshToken));
                             tokenStore.saveRefreshToken(userId, newRefreshToken, jwtUtil.getRefreshTokenSeconds());
 
                             addCookie(response, "REFRESH_TOKEN", newRefreshToken, (int) jwtUtil.getRefreshTokenSeconds());
