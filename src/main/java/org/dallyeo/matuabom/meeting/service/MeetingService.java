@@ -44,7 +44,6 @@ public class MeetingService {
 
     private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final DateTimeFormatter DAILY_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     // -------------------------------------------------------------------------
     // 모임 생성
@@ -409,35 +408,6 @@ public class MeetingService {
         return availableTimeCalculator.findCommonAvailableSlots(meeting.getParticipants());
     }
 
-    public Map<String, DailyCountDto> getDailyAvailability(String meetingId) {
-        Meeting meeting = findById(meetingId);
-
-        List<LocalDate> candidateDates = availableTimeCalculator.expandDateRange(
-            meeting.getRequirement().getDateRangeStart(),
-            meeting.getRequirement().getDateRangeEnd()
-        );
-
-        int totalParticipants = meeting.getParticipants().size();
-
-        Map<LocalDate, Long> availableCounts = candidateDates.stream()
-            .collect(Collectors.toMap(
-                date -> date,
-                date -> meeting.getParticipants().stream()
-                    .filter(p -> isParticipantAvailableOnDate(p, date))
-                    .count()
-            ));
-
-        return availableCounts.entrySet().stream()
-            .collect(Collectors.toMap(
-                entry -> entry.getKey().format(DAILY_DATE_FORMATTER),
-                entry -> new DailyCountDto(
-                    entry.getKey().format(DAILY_DATE_FORMATTER),
-                    totalParticipants,
-                    entry.getValue().intValue()
-                )
-            ));
-    }
-
     // -------------------------------------------------------------------------
     // 모임 상태 변경
     // -------------------------------------------------------------------------
@@ -703,17 +673,6 @@ public class MeetingService {
                 availableTimeCalculator.calculateFixedImpossibleSlots(participant, requirement, events, timetableItems);
             participant.setTimeStatuses(new ArrayList<>(fixed));
         }
-    }
-
-    private boolean isParticipantAvailableOnDate(MeetingParticipant participant, LocalDate date) {
-        Optional<ParticipantTimeStatus> statusOpt = participant.getTimeStatuses().stream()
-            .filter(s -> s.getDate() != null && s.getDate().equals(date))
-            .findFirst();
-
-        if (statusOpt.isEmpty()) return true;
-
-        Set<Integer> impossibleSlots = statusOpt.get().getImpossibleSlots();
-        return impossibleSlots == null || impossibleSlots.size() < 24;
     }
 
     private List<MeetingParticipant> buildParticipants(
