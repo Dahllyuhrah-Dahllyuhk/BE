@@ -6,8 +6,9 @@ import org.dallyeo.matuabom.meeting.domain.*;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
 import org.dallyeo.matuabom.auth.service.GoogleOAuthClientService;
 import org.dallyeo.matuabom.calendar.service.GoogleCalendarService;
-import org.dallyeo.matuabom.user.domain.UserEntity;
-import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
+import org.dallyeo.matuabom.user.domain.User;
+import org.dallyeo.matuabom.user.repository.UserRepository;
+import org.dallyeo.matuabom.sse.service.EventSseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,22 +30,22 @@ import static org.mockito.BDDMockito.*;
 class MeetingServiceInviteCodeTest {
 
     @Mock MeetingRepository meetingRepository;
-    @Mock UserJpaRepository userRepository;
+    @Mock UserRepository userRepository;
     @Mock AvailableTimeCalculator availableTimeCalculator;
     @Mock GoogleOAuthClientService googleOAuthClientService;
     @Mock GoogleCalendarService googleCalendarService;
     @Mock CalendarEventRepository calendarEventRepository;
+    @Mock EventSseService eventSseService;
 
     @InjectMocks MeetingService meetingService;
 
     private Meeting testMeeting;
-    private UserEntity testUser;
+    private User testUser;
 
     @BeforeEach
     void setUp() {
-        testUser = UserEntity.builder()
-            .id(1L)
-            .mongoId("user123")
+        testUser = User.builder()
+            .id("user123")
             .nickname("테스트유저")
             .build();
 
@@ -105,7 +106,7 @@ class MeetingServiceInviteCodeTest {
     @DisplayName("정상 참여 시 참여자 목록에 추가됨")
     void joinSuccessfully() {
         given(meetingRepository.findByInviteCode("ABCD1234")).willReturn(Optional.of(testMeeting));
-        given(userRepository.findByMongoId("user123")).willReturn(Optional.of(testUser));
+        given(userRepository.findById("user123")).willReturn(Optional.of(testUser));
         given(availableTimeCalculator.expandDateRange(any(), any())).willReturn(List.of(java.time.LocalDate.now()));
         given(calendarEventRepository.findByUserIdInAndStartTimestampLessThanAndEndTimestampGreaterThan(any(), anyLong(), anyLong()))
             .willReturn(List.of());

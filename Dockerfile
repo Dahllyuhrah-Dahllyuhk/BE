@@ -23,9 +23,6 @@ RUN addgroup -S spring && adduser -S spring -G spring && \
 
 COPY --from=builder --chown=spring:spring /app/build/libs/*.jar app.jar
 
-# 로그 디렉토리 미리 생성 (logback-spring.xml에서 /app/logs 사용)
-RUN mkdir -p /app/logs && chown spring:spring /app/logs
-
 USER spring
 
 ENV SPRING_PROFILES_ACTIVE=prod \

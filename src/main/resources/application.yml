@@ -5,43 +5,11 @@ spring:
   application:
     name: matuabom
 
-  # ── MongoDB (Meeting, CalendarEvent, GoogleOAuthClient) ──────────────
+  # ── MongoDB (단일 저장소) ────────────────────────────────────────────
   data:
     mongodb:
       uri: ${MONGODB_URI}
       database: ${MONGODB_NAME:matuabom}
-
-    # ── Redis (RefreshToken, InviteCode 캐시, 블랙리스트) ──────────────
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: 2000ms
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 2
-
-  # ── PostgreSQL (User, Friend, InviteCode, Timetable) ─────────────────
-  datasource:
-    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/matuabom}
-    username: ${POSTGRES_USER:matuabom}
-    password: ${POSTGRES_PASSWORD:}
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 30000
-
-  jpa:
-    hibernate:
-      ddl-auto: ${DDL_AUTO:none}   # 반드시 환경변수로 명시 (local/dev: update, prod: validate)
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: false
 
   # ── OAuth2 ────────────────────────────────────────────────────────────
   security:
@@ -101,7 +69,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,prometheus
+        include: health
   endpoint:
     health:
       show-details: never
@@ -112,9 +80,5 @@ management:
       enabled: true
     readinessState:
       enabled: true
-    db:
-      enabled: true     # PostgreSQL 연결 확인
     mongo:
       enabled: true     # MongoDB 연결 확인
-    redis:
-      enabled: true     # Redis 연결 확인

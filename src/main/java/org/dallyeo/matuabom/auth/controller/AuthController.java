@@ -6,9 +6,9 @@ import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.auth.service.TokenStore;
-import org.dallyeo.matuabom.user.domain.UserEntity;
+import org.dallyeo.matuabom.user.domain.User;
 import org.dallyeo.matuabom.user.dto.MeDto;
-import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
+import org.dallyeo.matuabom.user.repository.UserRepository;
 import org.dallyeo.matuabom.auth.security.CustomPrincipal;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -31,7 +31,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final UserJpaRepository userRepository;
+    private final UserRepository userRepository;
     private final TokenStore tokenStore;
     private final UserWithdrawalService userWithdrawalService;
     private final org.dallyeo.matuabom.user.service.UserService userService;
@@ -44,7 +44,7 @@ public class AuthController {
         if (principal == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Principal is null");
         }
-        UserEntity user = userRepository.findByMongoId(principal.getUserId())
+        User user = userRepository.findById(principal.getUserId())
                 .orElseThrow(() -> new UsernameNotFoundException("user not found"));
         return ResponseEntity.ok(MeDto.createDto(user));
     }

@@ -55,8 +55,7 @@ public class SecurityConfig {
                                 "/api-docs", "/api-docs/**", "/v3/api-docs/**",  // prod에서는 springdoc.swagger-ui.enabled=false로 비활성화
                                 "/", "/error", "/favicon.ico",
                                 "/*.png", "/*.gif", "/*.svg", "/*.jpg", "/*.html", "/*.css", "/*.js",
-                                "/actuator/health",   // 헬스체크 (CI/CD 배포 검증용)
-                                "/actuator/prometheus" // Prometheus 스크레이프 엔드포인트
+                                "/actuator/health"    // 헬스체크 (CI/CD 배포 검증용)
                         ).permitAll()
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/api/google/webhook").permitAll()
