@@ -1,0 +1,62 @@
+name: BE Deploy (OIDC → ECR → ECS)
+
+# develop에 push되면 자동 배포. 수동 실행(workflow_dispatch)도 허용.
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write   # OIDC 토큰 발급 (장기 AWS 키 불필요)
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: matuabom-be
+  ECS_CLUSTER: matuabom-cluster
+  ECS_SERVICE: matuabom-be
+  AWS_ROLE_ARN: arn:aws:iam::790730073969:role/matuabom-github-actions-role
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY"
+          # Dockerfile이 멀티스테이지로 gradle 빌드까지 수행한다.
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
+      - name: Deploy to ECS (force new deployment)
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment \
+            --region "$AWS_REGION" >/dev/null
+          echo "ECS 재배포 트리거됨 — 안정화 대기"
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --region "$AWS_REGION"
+          echo "서비스 안정화 완료"
