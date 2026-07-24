@@ -26,7 +26,9 @@ spring:
               - openid
               - profile
               - email
-              - https://www.googleapis.com/auth/calendar
+              # 앱은 events()만 사용(list/insert/update/delete/watch) → 최소 범위 calendar.events.
+              # Google 검증 제출 범위와 일치시켜야 함(전체 calendar 아님).
+              - https://www.googleapis.com/auth/calendar.events
 
           kakao:
             client-id: ${KAKAO_CLIENT_ID}
