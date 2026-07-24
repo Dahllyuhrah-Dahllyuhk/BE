@@ -1,10 +1,4 @@
 # 운영 환경 전용 설정
-spring:
-  jpa:
-    hibernate:
-      ddl-auto: ${DDL_AUTO:validate}
-    show-sql: false
-
 app:
   cookie-secure: true
 

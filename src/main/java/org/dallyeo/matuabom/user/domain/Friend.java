@@ -25,7 +25,12 @@ public class Friend {
         this.createdAt = Instant.now();
     }
 
-    public static Friend create(String userId1, String userId2) {
-        return new Friend(userId1, userId2);
+    /**
+     * userId1 < userId2 정렬을 보장해 (a,b)/(b,a) 중복 저장을 방지한다.
+     */
+    public static Friend create(String a, String b) {
+        String u1 = a.compareTo(b) < 0 ? a : b;
+        String u2 = a.compareTo(b) < 0 ? b : a;
+        return new Friend(u1, u2);
     }
 }

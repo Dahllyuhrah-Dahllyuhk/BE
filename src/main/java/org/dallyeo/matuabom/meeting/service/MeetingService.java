@@ -3,7 +3,7 @@ package org.dallyeo.matuabom.meeting.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
-import org.dallyeo.matuabom.user.domain.UserEntity;
+import org.dallyeo.matuabom.user.domain.User;
 import org.dallyeo.matuabom.meeting.domain.*;
 import org.dallyeo.matuabom.calendar.dto.CalendarEventDto;
 import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
@@ -13,7 +13,7 @@ import org.dallyeo.matuabom.calendar.service.GoogleCalendarService;
 import org.dallyeo.matuabom.sse.service.EventSseService;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
-import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
+import org.dallyeo.matuabom.user.repository.UserRepository;
 import org.dallyeo.matuabom.timetable.domain.TimetableItem;
 import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 public class MeetingService {
 
     private final MeetingRepository meetingRepository;
-    private final UserJpaRepository userRepository;
+    private final UserRepository userRepository;
     private final AvailableTimeCalculator availableTimeCalculator;
     private final GoogleOAuthClientService googleOAuthClientService;
     private final GoogleCalendarService googleCalendarService;
@@ -177,7 +177,7 @@ public class MeetingService {
                     return old;
                 }
                 // 새로 추가된 참여자
-                UserEntity user = userRepository.findByMongoId(id).orElse(null);
+                User user = userRepository.findById(id).orElse(null);
                 MeetingParticipant p = new MeetingParticipant();
                 p.setUserId(id);
                 p.setName(user != null ? user.getNickname() : "Unknown User");
@@ -630,7 +630,7 @@ public class MeetingService {
                     throw new IllegalStateException("이미 참여한 모임입니다. meetingId=" + meeting.getId());
                 }
 
-                UserEntity user = userRepository.findByMongoId(userId)
+                User user = userRepository.findById(userId)
                     .orElseThrow(() -> NotFoundException.user(userId));
 
                 MeetingParticipant newParticipant = new MeetingParticipant();
@@ -723,7 +723,7 @@ public class MeetingService {
         boolean defaultReflectCalendar
     ) {
         return userIds.stream().map(id -> {
-            UserEntity user = userRepository.findByMongoId(id).orElse(null);
+            User user = userRepository.findById(id).orElse(null);
             String name = (user != null) ? user.getNickname() : "Unknown User";
 
             MeetingParticipant p = new MeetingParticipant();
