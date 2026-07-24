@@ -35,6 +35,7 @@ public class SecurityConfig {
 
     private final KakaoOAuth2UserService kakaoOAuth2UserService;
     private final JwtLoginSuccessHandler jwtLoginSuccessHandler;
+    private final org.dallyeo.matuabom.auth.handler.JwtLoginFailureHandler jwtLoginFailureHandler;
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimitFilter rateLimitFilter;
     private final AdminSecretFilter adminSecretFilter;
@@ -81,6 +82,7 @@ public class SecurityConfig {
                             return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
                         }))
                         .successHandler(jwtLoginSuccessHandler)
+                        .failureHandler(jwtLoginFailureHandler)
                 )
                 .oauth2Client(Customizer.withDefaults())
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
