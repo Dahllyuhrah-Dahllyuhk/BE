@@ -2,29 +2,26 @@ package org.dallyeo.matuabom.meeting.service;
 
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.auth.service.TokenStore;
-import org.dallyeo.matuabom.user.domain.InviteCodeEntity;
-import org.dallyeo.matuabom.user.repository.jpa.InviteCodeJpaRepository;
+import org.dallyeo.matuabom.user.domain.InviteCode;
+import org.dallyeo.matuabom.user.repository.InviteCodeRepository;
 import org.dallyeo.matuabom.global.util.InviteCodeGenerator;
 import org.dallyeo.matuabom.global.exception.ConflictException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class InviteCodeService {
 
-    private final InviteCodeJpaRepository inviteCodeJpaRepository;
+    private final InviteCodeRepository inviteCodeRepository;
     private final InviteCodeGenerator inviteCodeGenerator;
     private final TokenStore tokenStore;
 
-    @Transactional
-    public InviteCodeEntity getOrCreateMyInviteCode(String userId) {
-        return inviteCodeJpaRepository.findByOwnerUserId(userId)
+    public InviteCode getOrCreateMyInviteCode(String userId) {
+        return inviteCodeRepository.findByOwnerUserId(userId)
                 .orElseGet(() -> {
                     String code = generateUniqueCode(9);
-                    InviteCodeEntity entity = new InviteCodeEntity(code, userId);
-                    InviteCodeEntity saved = inviteCodeJpaRepository.save(entity);
-                    // 신규 생성 즉시 Redis에 캐싱
+                    InviteCode saved = inviteCodeRepository.save(InviteCode.create(code, userId));
+                    // 신규 생성 즉시 캐싱
                     tokenStore.cacheInviteCode(code, userId);
                     return saved;
                 });
@@ -34,7 +31,7 @@ public class InviteCodeService {
         int maxAttempts = 10;
         for (int i = 0; i < maxAttempts; i++) {
             String code = inviteCodeGenerator.generateRandomCode(length);
-            if (!inviteCodeJpaRepository.existsByCode(code)) {
+            if (!Boolean.TRUE.equals(inviteCodeRepository.existsByCode(code))) {
                 return code;
             }
         }

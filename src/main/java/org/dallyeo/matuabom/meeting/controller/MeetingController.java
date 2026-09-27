@@ -154,18 +154,6 @@ public class MeetingController {
         return ResponseEntity.ok(meetingService.getFinalAvailableSlots(meetingId));
     }
 
-    @GetMapping("/{meetingId}/daily-availability")
-    public ResponseEntity<Map<String, DailyCountDto>> getDailyAvailability(
-        @PathVariable String meetingId,
-        @AuthenticationPrincipal CustomPrincipal principal
-    ) {
-        Meeting meeting = meetingService.findById(meetingId);
-        if (!meetingService.isParticipantOrHost(meeting, principal.getUserId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-        return ResponseEntity.ok(meetingService.getDailyAvailability(meetingId));
-    }
-
     // -------------------------------------------------------------------------
     // 모임 초대 코드
     // -------------------------------------------------------------------------

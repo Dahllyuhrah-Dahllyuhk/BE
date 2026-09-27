@@ -1,99 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <!-- 콘솔 appender (항상 활성) -->
+    <!-- 컨테이너 표준: stdout으로만 출력 (docker logs / CloudWatch가 수집) -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- ================================================================
-         로컬 환경 — ELK 연동 (Logstash TCP + JSON)
-         SPRING_PROFILES_ACTIVE=local 로 실행 시 활성
-         ================================================================ -->
-    <springProfile name="local">
-
-        <!-- JSON 파일 appender: Logstash가 이 파일을 polling -->
-        <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-            <file>./logs/matuabom.json</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-                <fileNamePattern>./logs/matuabom.%d{yyyy-MM-dd}.%i.json.gz</fileNamePattern>
-                <maxFileSize>50MB</maxFileSize>
-                <maxHistory>7</maxHistory>
-                <totalSizeCap>500MB</totalSizeCap>
-            </rollingPolicy>
-            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                <!-- 공통 필드 -->
-                <customFields>{"app":"matuabom","env":"local"}</customFields>
-                <!-- 민감 필드 마스킹 -->
-                <fieldNames>
-                    <timestamp>@timestamp</timestamp>
-                    <version>[ignore]</version>
-                </fieldNames>
-            </encoder>
-        </appender>
-
-        <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
-            <queueSize>512</queueSize>
-            <discardingThreshold>0</discardingThreshold>
-            <appender-ref ref="JSON_FILE"/>
-        </appender>
-
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_JSON"/>
-        </root>
-        <logger name="org.dallyeo.matuabom" level="DEBUG"/>
-        <logger name="org.springframework.security" level="INFO"/>
-
-    </springProfile>
-
-    <!-- 개발 환경 -->
-    <springProfile name="dev">
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-        </root>
-        <logger name="org.dallyeo.matuabom" level="DEBUG"/>
-        <logger name="org.springframework.security" level="DEBUG"/>
-    </springProfile>
-
-    <!-- 운영 환경 — 파일 appender는 prod에서만 초기화 -->
+    <!-- 운영 -->
     <springProfile name="prod">
-
-        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-            <file>/app/logs/matuabom.log</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-                <fileNamePattern>/app/logs/matuabom.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
-                <maxFileSize>50MB</maxFileSize>
-                <maxHistory>30</maxHistory>
-                <totalSizeCap>2GB</totalSizeCap>
-            </rollingPolicy>
-            <encoder>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-            </encoder>
-        </appender>
-
-        <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
-            <queueSize>512</queueSize>
-            <discardingThreshold>0</discardingThreshold>
-            <appender-ref ref="FILE"/>
-        </appender>
-
         <root level="WARN">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
         </root>
         <logger name="org.dallyeo.matuabom" level="INFO"/>
         <logger name="org.springframework.security" level="WARN"/>
         <!-- SSE timeout 시 response already committed 에러는 노이즈 — 억제 -->
         <logger name="org.apache.catalina.core.ContainerBase" level="ERROR"/>
         <logger name="org.apache.catalina.connector" level="ERROR"/>
-
     </springProfile>
 
-    <!-- 기본 (프로파일 미지정) -->
-    <springProfile name="!local &amp; !dev &amp; !prod">
+    <!-- 로컬/개발/기본 -->
+    <springProfile name="!prod">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
         </root>

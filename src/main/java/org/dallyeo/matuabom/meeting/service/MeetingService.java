@@ -3,7 +3,7 @@ package org.dallyeo.matuabom.meeting.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dallyeo.matuabom.calendar.domain.GoogleOAuthClientEntity;
-import org.dallyeo.matuabom.user.domain.UserEntity;
+import org.dallyeo.matuabom.user.domain.User;
 import org.dallyeo.matuabom.meeting.domain.*;
 import org.dallyeo.matuabom.calendar.dto.CalendarEventDto;
 import org.dallyeo.matuabom.calendar.dto.CreateEventReq;
@@ -13,7 +13,7 @@ import org.dallyeo.matuabom.calendar.service.GoogleCalendarService;
 import org.dallyeo.matuabom.sse.service.EventSseService;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
-import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
+import org.dallyeo.matuabom.user.repository.UserRepository;
 import org.dallyeo.matuabom.timetable.domain.TimetableItem;
 import org.dallyeo.matuabom.global.exception.*;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 public class MeetingService {
 
     private final MeetingRepository meetingRepository;
-    private final UserJpaRepository userRepository;
+    private final UserRepository userRepository;
     private final AvailableTimeCalculator availableTimeCalculator;
     private final GoogleOAuthClientService googleOAuthClientService;
     private final GoogleCalendarService googleCalendarService;
@@ -44,7 +44,6 @@ public class MeetingService {
 
     private static final ZoneId ZONE_SEOUL = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE;
-    private static final DateTimeFormatter DAILY_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     // -------------------------------------------------------------------------
     // 모임 생성
@@ -177,7 +176,7 @@ public class MeetingService {
                     return old;
                 }
                 // 새로 추가된 참여자
-                UserEntity user = userRepository.findByMongoId(id).orElse(null);
+                User user = userRepository.findById(id).orElse(null);
                 MeetingParticipant p = new MeetingParticipant();
                 p.setUserId(id);
                 p.setName(user != null ? user.getNickname() : "Unknown User");
@@ -409,35 +408,6 @@ public class MeetingService {
         return availableTimeCalculator.findCommonAvailableSlots(meeting.getParticipants());
     }
 
-    public Map<String, DailyCountDto> getDailyAvailability(String meetingId) {
-        Meeting meeting = findById(meetingId);
-
-        List<LocalDate> candidateDates = availableTimeCalculator.expandDateRange(
-            meeting.getRequirement().getDateRangeStart(),
-            meeting.getRequirement().getDateRangeEnd()
-        );
-
-        int totalParticipants = meeting.getParticipants().size();
-
-        Map<LocalDate, Long> availableCounts = candidateDates.stream()
-            .collect(Collectors.toMap(
-                date -> date,
-                date -> meeting.getParticipants().stream()
-                    .filter(p -> isParticipantAvailableOnDate(p, date))
-                    .count()
-            ));
-
-        return availableCounts.entrySet().stream()
-            .collect(Collectors.toMap(
-                entry -> entry.getKey().format(DAILY_DATE_FORMATTER),
-                entry -> new DailyCountDto(
-                    entry.getKey().format(DAILY_DATE_FORMATTER),
-                    totalParticipants,
-                    entry.getValue().intValue()
-                )
-            ));
-    }
-
     // -------------------------------------------------------------------------
     // 모임 상태 변경
     // -------------------------------------------------------------------------
@@ -630,7 +600,7 @@ public class MeetingService {
                     throw new IllegalStateException("이미 참여한 모임입니다. meetingId=" + meeting.getId());
                 }
 
-                UserEntity user = userRepository.findByMongoId(userId)
+                User user = userRepository.findById(userId)
                     .orElseThrow(() -> NotFoundException.user(userId));
 
                 MeetingParticipant newParticipant = new MeetingParticipant();
@@ -705,17 +675,6 @@ public class MeetingService {
         }
     }
 
-    private boolean isParticipantAvailableOnDate(MeetingParticipant participant, LocalDate date) {
-        Optional<ParticipantTimeStatus> statusOpt = participant.getTimeStatuses().stream()
-            .filter(s -> s.getDate() != null && s.getDate().equals(date))
-            .findFirst();
-
-        if (statusOpt.isEmpty()) return true;
-
-        Set<Integer> impossibleSlots = statusOpt.get().getImpossibleSlots();
-        return impossibleSlots == null || impossibleSlots.size() < 24;
-    }
-
     private List<MeetingParticipant> buildParticipants(
         String hostId,
         List<String> userIds,
@@ -723,7 +682,7 @@ public class MeetingService {
         boolean defaultReflectCalendar
     ) {
         return userIds.stream().map(id -> {
-            UserEntity user = userRepository.findByMongoId(id).orElse(null);
+            User user = userRepository.findById(id).orElse(null);
             String name = (user != null) ? user.getNickname() : "Unknown User";
 
             MeetingParticipant p = new MeetingParticipant();

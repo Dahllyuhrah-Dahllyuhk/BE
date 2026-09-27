@@ -19,7 +19,7 @@ public class KakaoApiController {
 
     /**
      * 카카오 친구 목록 API.
-     * TODO: 카카오 OAuth 토큰은 현재 PostgreSQL UserEntity에 저장되지 않음.
+     * TODO: 카카오 OAuth 토큰은 현재 어디에도 저장되지 않음.
      *       추후 암호화 저장소(예: google_oauth_clients 방식) 분리 후 복원 필요.
      *       현재는 기능 비활성화.
      */

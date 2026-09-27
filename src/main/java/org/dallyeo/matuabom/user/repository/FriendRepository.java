@@ -12,4 +12,6 @@ public interface FriendRepository extends MongoRepository<Friend, String> {
     List<Friend> findByUserId1OrUserId2(String userId1, String userId2);
 
     Optional<Friend> findByUserId1AndUserId2(String userId1, String userId2);
+
+    void deleteByUserId1OrUserId2(String userId1, String userId2);
 }

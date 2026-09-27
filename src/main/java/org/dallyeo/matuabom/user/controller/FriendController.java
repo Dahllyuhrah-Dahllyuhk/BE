@@ -1,7 +1,7 @@
 package org.dallyeo.matuabom.user.controller;
 
 import lombok.RequiredArgsConstructor;
-import org.dallyeo.matuabom.user.domain.UserEntity;
+import org.dallyeo.matuabom.user.domain.User;
 import org.dallyeo.matuabom.user.dto.AddByCodeRequest;
 import org.dallyeo.matuabom.user.dto.FriendDto;
 import org.dallyeo.matuabom.meeting.dto.InviteCodeResponse;
@@ -34,7 +34,7 @@ public class FriendController {
             @AuthenticationPrincipal CustomPrincipal principal,
             @RequestBody AddByCodeRequest dto
     ) {
-        UserEntity friend = friendService.addFriend(principal.getUserId(), dto.getCode());
+        User friend = friendService.addFriend(principal.getUserId(), dto.getCode());
         return ResponseEntity.ok().body(FriendDto.create(friend));
     }
 
@@ -56,7 +56,7 @@ public class FriendController {
         if (targetUserId == null || targetUserId.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-        UserEntity friend = friendService.addFriendByUserId(principal.getUserId(), targetUserId);
+        User friend = friendService.addFriendByUserId(principal.getUserId(), targetUserId);
         return ResponseEntity.ok(FriendDto.create(friend));
     }
 

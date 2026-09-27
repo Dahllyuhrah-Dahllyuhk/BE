@@ -4,7 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.calendar.repository.CalendarEventRepository;
 import org.dallyeo.matuabom.calendar.service.WatchChannelRenewalService;
 import org.dallyeo.matuabom.meeting.repository.MeetingRepository;
-import org.dallyeo.matuabom.user.repository.jpa.UserJpaRepository;
+import org.dallyeo.matuabom.user.domain.User;
+import org.dallyeo.matuabom.user.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,7 +19,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminController {
 
-    private final UserJpaRepository userRepository;
+    private final UserRepository userRepository;
     private final MeetingRepository meetingRepository;
     private final CalendarEventRepository calendarEventRepository;
     private final WatchChannelRenewalService watchChannelRenewalService;
@@ -88,7 +89,7 @@ public class AdminController {
 
         List<Map<String, Object>> users = all.subList(from, to).stream().map(u -> {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", u.getMongoId());
+            m.put("id", u.getId());
             m.put("nickname", u.getNickname());
             m.put("googleLinked", u.isGoogleLinked());
             m.put("googleEmail", u.getGoogleEmail());
@@ -153,7 +154,9 @@ public class AdminController {
         Instant since = today.minusDays(29).atStartOfDay(zone).toInstant();
 
         // findAll 대신 최근 30일 데이터만 조회
-        Map<LocalDate, Long> countByDate = userRepository.findCreatedAtAfter(since).stream()
+        Map<LocalDate, Long> countByDate = userRepository.findByCreatedAtAfterOrderByCreatedAtAsc(since).stream()
+                .map(User::getCreatedAt)
+                .filter(java.util.Objects::nonNull)
                 .collect(Collectors.groupingBy(
                         instant -> instant.atZone(zone).toLocalDate(),
                         Collectors.counting()

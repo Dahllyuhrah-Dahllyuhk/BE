@@ -3,24 +3,6 @@ spring:
     mongodb:
       uri: mongodb://localhost:27017/matuabom_test
       database: matuabom_test
-    redis:
-      host: localhost
-      port: 6379
-      password:
-
-  datasource:
-    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.H2Dialect
 
 JWT_SECRET: test-secret-key-minimum-32-characters-long
 ENCRYPT_KEY:

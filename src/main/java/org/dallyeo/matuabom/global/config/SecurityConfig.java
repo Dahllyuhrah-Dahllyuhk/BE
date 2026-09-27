@@ -35,6 +35,7 @@ public class SecurityConfig {
 
     private final KakaoOAuth2UserService kakaoOAuth2UserService;
     private final JwtLoginSuccessHandler jwtLoginSuccessHandler;
+    private final org.dallyeo.matuabom.auth.handler.JwtLoginFailureHandler jwtLoginFailureHandler;
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimitFilter rateLimitFilter;
     private final AdminSecretFilter adminSecretFilter;
@@ -55,14 +56,12 @@ public class SecurityConfig {
                                 "/api-docs", "/api-docs/**", "/v3/api-docs/**",  // prod에서는 springdoc.swagger-ui.enabled=false로 비활성화
                                 "/", "/error", "/favicon.ico",
                                 "/*.png", "/*.gif", "/*.svg", "/*.jpg", "/*.html", "/*.css", "/*.js",
-                                "/actuator/health",   // 헬스체크 (CI/CD 배포 검증용)
-                                "/actuator/prometheus" // Prometheus 스크레이프 엔드포인트
+                                "/actuator/health"    // 헬스체크 (CI/CD 배포 검증용)
                         ).permitAll()
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/api/google/webhook").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/token").permitAll()
-                        .requestMatchers("/api/sse/**").permitAll()  // SSE: 컨트롤러가 자체 인증 처리
                         .requestMatchers("/api/admin/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
@@ -83,6 +82,7 @@ public class SecurityConfig {
                             return new DefaultOAuth2UserService().loadUser(oauth2UserRequest);
                         }))
                         .successHandler(jwtLoginSuccessHandler)
+                        .failureHandler(jwtLoginFailureHandler)
                 )
                 .oauth2Client(Customizer.withDefaults())
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)

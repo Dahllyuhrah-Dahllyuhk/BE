@@ -2,7 +2,7 @@ package org.dallyeo.matuabom.timetable.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.dallyeo.matuabom.auth.security.CustomPrincipal;
-import org.dallyeo.matuabom.timetable.domain.TimetableEntity;
+import org.dallyeo.matuabom.timetable.domain.Timetable;
 import org.dallyeo.matuabom.timetable.dto.TimetableItemRequest;
 import org.dallyeo.matuabom.timetable.dto.TimetableRequest;
 import org.dallyeo.matuabom.timetable.service.TimetableService;
@@ -20,7 +20,7 @@ public class TimetableController {
     private final TimetableService timetableService;
 
     @PostMapping
-    public ResponseEntity<TimetableEntity> createTimetable(
+    public ResponseEntity<Timetable> createTimetable(
             @AuthenticationPrincipal CustomPrincipal principal,
             @RequestBody TimetableRequest request
     ) {
@@ -28,24 +28,24 @@ public class TimetableController {
     }
 
     @GetMapping
-    public ResponseEntity<List<TimetableEntity>> getMyTimetables(
+    public ResponseEntity<List<Timetable>> getMyTimetables(
             @AuthenticationPrincipal CustomPrincipal principal
     ) {
         return ResponseEntity.ok(timetableService.getMyTimetables(principal.getUserId()));
     }
 
     @GetMapping("/{timetableId}")
-    public ResponseEntity<TimetableEntity> getTimetable(
+    public ResponseEntity<Timetable> getTimetable(
             @AuthenticationPrincipal CustomPrincipal principal,
-            @PathVariable Long timetableId
+            @PathVariable String timetableId
     ) {
         return ResponseEntity.ok(timetableService.getTimetable(principal.getUserId(), timetableId));
     }
 
     @PutMapping("/{timetableId}")
-    public ResponseEntity<TimetableEntity> updateTimetable(
+    public ResponseEntity<Timetable> updateTimetable(
             @AuthenticationPrincipal CustomPrincipal principal,
-            @PathVariable Long timetableId,
+            @PathVariable String timetableId,
             @RequestBody TimetableRequest request
     ) {
         return ResponseEntity.ok(
@@ -55,16 +55,16 @@ public class TimetableController {
     @DeleteMapping("/{timetableId}")
     public ResponseEntity<Void> deleteTimetable(
             @AuthenticationPrincipal CustomPrincipal principal,
-            @PathVariable Long timetableId
+            @PathVariable String timetableId
     ) {
         timetableService.deleteTimetable(principal.getUserId(), timetableId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{timetableId}/items")
-    public ResponseEntity<TimetableEntity> addItem(
+    public ResponseEntity<Timetable> addItem(
             @AuthenticationPrincipal CustomPrincipal principal,
-            @PathVariable Long timetableId,
+            @PathVariable String timetableId,
             @RequestBody TimetableItemRequest dto
     ) {
         return ResponseEntity.ok(
@@ -72,10 +72,10 @@ public class TimetableController {
     }
 
     @PutMapping("/{timetableId}/items/{itemId}")
-    public ResponseEntity<TimetableEntity> updateItem(
+    public ResponseEntity<Timetable> updateItem(
             @AuthenticationPrincipal CustomPrincipal principal,
-            @PathVariable Long timetableId,
-            @PathVariable Long itemId,
+            @PathVariable String timetableId,
+            @PathVariable String itemId,
             @RequestBody TimetableItemRequest dto
     ) {
         return ResponseEntity.ok(
@@ -83,10 +83,10 @@ public class TimetableController {
     }
 
     @DeleteMapping("/{timetableId}/items/{itemId}")
-    public ResponseEntity<TimetableEntity> deleteItem(
+    public ResponseEntity<Timetable> deleteItem(
             @AuthenticationPrincipal CustomPrincipal principal,
-            @PathVariable Long timetableId,
-            @PathVariable Long itemId
+            @PathVariable String timetableId,
+            @PathVariable String itemId
     ) {
         return ResponseEntity.ok(
                 timetableService.deleteTimetableItem(principal.getUserId(), timetableId, itemId));

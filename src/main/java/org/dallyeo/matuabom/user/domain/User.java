@@ -13,6 +13,10 @@ import java.time.Instant;
 @NoArgsConstructor
 @Document(collection = "users")
 public class User {
+
+    /** 현재 약관/개인정보처리방침 버전. 개정 시 이 값을 올리면 재동의를 받는다. */
+    public static final String CURRENT_TERMS_VERSION = "1";
+
     @Id
     private String id;
     private Long kakaoId;
@@ -27,8 +31,16 @@ public class User {
     private String googleEmail;
     private boolean googleLinked;
 
+    /** 약관/개인정보 동의 시각 (미동의 시 null) */
+    private Instant termsAgreedAt;
+
+    /** 동의한 약관 버전 */
+    private String termsVersion;
+
     @Builder.Default
     private Instant createdAt = Instant.now();
+
+    private Instant updatedAt;
 
     public void updateKakaoProfile(String nickname, String profileImageUrl) {
         this.nickname = nickname;

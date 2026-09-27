@@ -7,8 +7,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
 
@@ -42,6 +45,22 @@ public class GlobalExceptionHandler {
         log.warn("Validation failed: {}", message);
         return ResponseEntity.badRequest()
                 .body(Map.of("error", "validation_failed", "message", message));
+    }
+
+    // 400 — 필수 파라미터 누락 / 파라미터 타입 불일치 (기존엔 catch-all 500로 빠지던 것)
+    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<Map<String, String>> handleBadRequestParams(Exception e) {
+        log.warn("Bad request parameter: {}", e.getMessage());
+        return ResponseEntity.badRequest()
+                .body(Map.of("error", "bad_request", "message", "요청 파라미터가 올바르지 않습니다."));
+    }
+
+    // 404 — 정적 리소스 미존재 (/favicon.ico, /robots.txt, /login 등 — 기존엔 500 노이즈)
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, String>> handleNoResource(NoResourceFoundException e) {
+        log.debug("No static resource: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "not_found", "message", "리소스를 찾을 수 없습니다."));
     }
 
     // 400 — 아직 교체 안 된 IllegalArgumentException
